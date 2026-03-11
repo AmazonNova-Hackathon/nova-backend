@@ -1,0 +1,107 @@
+openapi: 3.0.0
+info:
+  title: MediAgent API
+  description: Hackathon backend for Amazon Nova lab data extraction and agentic chat.
+  version: 1.0.0
+servers:
+  - url: https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod
+    description: Production API Gateway
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+paths:
+  /reports/upload:
+    post:
+      summary: Upload a lab report or medical document
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - patientId
+                - reportType
+                - imageBase64
+              properties:
+                patientId:
+                  type: string
+                  example: "patient-demo-001"
+                reportType:
+                  type: string
+                  example: "lab_report"
+                imageBase64:
+                  type: string
+                  description: "Base64 encoded image string representing the report."
+      responses:
+        '200':
+          description: Successfully parsed and stored the report.
+  /reports:
+    get:
+      summary: Retrieve all reports for a specific patient
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: patientId
+          required: true
+          schema:
+            type: string
+          description: The ID of the patient
+      responses:
+        '200':
+          description: A list of FHIR DiagnosticReports.
+  /observations:
+    get:
+      summary: Retrieve all observations for a specific patient
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: patientId
+          required: true
+          schema:
+            type: string
+          description: The ID of the patient
+      responses:
+        '200':
+          description: A list of FHIR Observations.
+  /chat:
+    post:
+      summary: Chat with the Bedrock Agent
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - patientId
+                - message
+                - conversationHistory
+              properties:
+                patientId:
+                  type: string
+                  example: "patient-demo-001"
+                message:
+                  type: string
+                  example: "What is my glucose trend?"
+                conversationHistory:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                      content:
+                        type: string
+      responses:
+        '200':
+          description: Response from the LLM agent.
