@@ -21,3 +21,8 @@
 ## 4. Dependencies & Observability
 - Add `aws-lambda-powertools` to `requirements.txt`.
 - Prefer structured JSON logging over plain `print()` statements so CloudWatch logs are easily queryable.
+
+## 5. Deployment and Version Control
+- **NEVER** push code to a remote Git repository without explicit confirmation from the user.
+- **DO NOT** manually deploy every single granular change to AWS using `sam deploy`. 
+- Since a GitHub Actions CI/CD pipeline is configured, the agent should rely on committing (with permission) and allowing the pipeline to handle AWS deployment automatically, or bulk local deployments when explicitly requested.

@@ -93,6 +93,12 @@ Resources:
                 - bedrock:InvokeModel
               Resource: "*"
       Events:
+        GetUploadUrlApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /reports/upload-url
+            Method: get
         UploadReportApi:
           Type: Api
           Properties:

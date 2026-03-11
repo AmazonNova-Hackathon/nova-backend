@@ -15,6 +15,7 @@ class UploadResponse(BaseModel):
 class PreSignedUrlResponse(BaseModel):
     url: str
     reportId: str
+    s3Key: str
 
 
 class ErrorResponse(BaseModel):

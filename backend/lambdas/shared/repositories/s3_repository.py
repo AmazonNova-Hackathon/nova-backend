@@ -17,7 +17,11 @@ class S3Repository:
 
     def get_presigned_url(self, s3_key: str, expires_in: int = 3600) -> str:
         return self.s3.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': self.bucket, 'Key': s3_key},
+            'put_object', # Change from 'get_object' to 'put_object' for upload!
+            Params={'Bucket': self.bucket, 'Key': s3_key, 'ContentType': 'image/jpeg'},
             ExpiresIn=expires_in
         )
+
+    def get_image_bytes(self, s3_key: str) -> bytes:
+        response = self.s3.get_object(Bucket=self.bucket, Key=s3_key)
+        return response['Body'].read()

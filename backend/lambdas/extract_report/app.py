@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
-from extraction_service import process_upload
+from extraction_service import process_upload, generate_upload_url
 from report_service import get_reports, get_observations
 from lambdas.shared.models.responses import ErrorResponse
 
@@ -18,7 +18,16 @@ def lambda_handler(event: dict, context: LambdaContext):
     logger.info("Received request", extra={"method": method, "path": path})
 
     try:
-        if method == 'POST' and path == '/reports/upload':
+        if method == 'GET' and path == '/reports/upload-url':
+            params = event.get('queryStringParameters') or {}
+            patient_id = params.get('patientId')
+            if not patient_id:
+                return _build_error(400, "VALIDATION_ERROR", "patientId query parameter is required")
+                
+            response = generate_upload_url(patient_id)
+            return _build_response(200, response.model_dump())
+            
+        elif method == 'POST' and path == '/reports/upload':
             body = json.loads(event.get('body', '{}'))
             response = process_upload(body)
             return _build_response(200, response.model_dump())

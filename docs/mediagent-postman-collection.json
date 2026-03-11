@@ -6,7 +6,61 @@
 	},
 	"item": [
 		{
-			"name": "Upload Report",
+			"name": "Step 1: Get Upload URL",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "{{api_key}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/reports/upload-url?patientId=patient-demo-001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"reports",
+						"upload-url"
+					],
+					"query": [
+						{
+							"key": "patientId",
+							"value": "patient-demo-001"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Step 2: Upload to S3 (Direct)",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "image/jpeg",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "file",
+					"file": {}
+				},
+				"url": {
+					"raw": "{{s3_presigned_url}}",
+					"host": [
+						"{{s3_presigned_url}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Step 3: Trigger Extraction Processing",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -18,7 +72,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"patientId\": \"patient-demo-001\",\n    \"reportType\": \"lab_report\",\n    \"imageBase64\": \"/9j/4AAQSk...\"\n}",
+					"raw": "{\n    \"patientId\": \"patient-demo-001\",\n    \"reportType\": \"lab_report\",\n    \"s3Key\": \"{{s3_key}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -103,12 +157,22 @@
 	"variable": [
 		{
 			"key": "base_url",
-			"value": "https://REPLACE_ME.execute-api.us-east-1.amazonaws.com/prod",
+			"value": "https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod",
 			"type": "string"
 		},
 		{
 			"key": "api_key",
-			"value": "REPLACE_ME",
+			"value": "I7SiDKhjuOOPLmuy2uEx5RSRtu9op7nkLU4MediA",
+			"type": "string"
+		},
+		{
+			"key": "s3_presigned_url",
+			"value": "PASTE_EXTRACTED_URL_HERE",
+			"type": "string"
+		},
+		{
+			"key": "s3_key",
+			"value": "PASTE_EXTRACTED_KEY_HERE",
 			"type": "string"
 		}
 	]

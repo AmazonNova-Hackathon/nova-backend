@@ -55,4 +55,5 @@ We do not use messy `.env` files locally because we rely strictly on AWS native 
 
 ## 📖 API & Documentation
 - **API Spec**: [Swagger OpenAPI](docs/swagger.yaml) | [Postman Collection](docs/mediagent-postman-collection.json)
+- **UI Integrations**: [Android Guidelines](docs/android_guidelines.md) (Graphs, Citations, Alerts)
 - **Design Details**: [PRD](docs/PRD.md) | [Architecture Patterns](docs/architecture.md)

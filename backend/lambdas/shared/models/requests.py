@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class UploadRequest(BaseModel):
     patientId: str
-    imageBase64: str
+    s3Key: str
     reportType: Literal["lab_report", "prescription", "doctor_note"]
 
 

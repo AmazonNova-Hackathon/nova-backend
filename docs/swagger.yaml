@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: MediAgent API
   description: Hackathon backend for Amazon Nova lab data extraction and agentic chat.
-  version: 1.0.0
+  version: 1.1.0
 servers:
   - url: https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod
     description: Production API Gateway
@@ -13,9 +13,24 @@ components:
       in: header
       name: x-api-key
 paths:
+  /reports/upload-url:
+    get:
+      summary: Retrieve a pre-signed S3 URL for uploading large report images directly.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: patientId
+          required: true
+          schema:
+            type: string
+          description: The ID of the patient.
+      responses:
+        '200':
+          description: A payload containing the pre-signed S3 `url` and the associated `s3Key`.
   /reports/upload:
     post:
-      summary: Upload a lab report or medical document
+      summary: Trigger Amazon Nova extraction on the previously uploaded S3 image.
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -27,7 +42,7 @@ paths:
               required:
                 - patientId
                 - reportType
-                - imageBase64
+                - s3Key
               properties:
                 patientId:
                   type: string
@@ -35,9 +50,9 @@ paths:
                 reportType:
                   type: string
                   example: "lab_report"
-                imageBase64:
+                s3Key:
                   type: string
-                  description: "Base64 encoded image string representing the report."
+                  description: "The S3 key target that the mobile app uploaded the binary to."
       responses:
         '200':
           description: Successfully parsed and stored the report.
@@ -52,13 +67,12 @@ paths:
           required: true
           schema:
             type: string
-          description: The ID of the patient
       responses:
         '200':
           description: A list of FHIR DiagnosticReports.
   /observations:
     get:
-      summary: Retrieve all observations for a specific patient
+      summary: Retrieve all observations for a specific patient for UI Graph plotting.
       security:
         - ApiKeyAuth: []
       parameters:
@@ -67,10 +81,9 @@ paths:
           required: true
           schema:
             type: string
-          description: The ID of the patient
       responses:
         '200':
-          description: A list of FHIR Observations.
+          description: A list of FHIR Observations containing `value`, `date`, `normalLow`, `normalHigh` (for rendering bands), and `isAbnormal` boolean alerts.
   /chat:
     post:
       summary: Chat with the Bedrock Agent
@@ -104,4 +117,4 @@ paths:
                         type: string
       responses:
         '200':
-          description: Response from the LLM agent.
+          description: Response from the LLM agent, containing `referencedReports` or `referencedObservations` arrays for UI Citations.

@@ -6,8 +6,14 @@ MediAgent relies on an event-driven serverless topology heavily optimized for Am
 - **API Gateway**: Provides REST endpoints protected by x-api-key.
 - **AWS Lambda**: Contains business logic segmented strictly out of handlers.
 - **Amazon DynamoDB**: Operates as a single-table datastore handling composite index-based access to FHIR Diagnostic Reports and Observations.
-- **Amazon S3**: Cheap object storage containing the encrypted raw photos.
+                                            - **Amazon S3**: Cheap object storage containing the encrypted raw photos. Actively leverages **Pre-Signed URLs** to allow direct mobile uploads without hitting API Gateway's 10MB payload size limit.
 - **Amazon Bedrock**: Used symmetrically for both visual capability (`extract_report` payload ingestion) and agentic LLM context routing (`agent_chat` Bedrock Converse).
+
+## Mobile Upload Pattern
+We utilize industry best practices to avoid base64 bloat over API Gateway by splitting the ingestion flow into three steps:
+1. `GET /reports/upload-url`: The lambda authenticates the patient context and provisions a temporary URL giving Android direct permission to PUT a binary directly into the private AWS S3 bucket.
+2. `PUT {{presignedUrl}}`: Android natively streams the byte array to S3, gaining the ability to attach progress bars or resume connections.
+3. `POST /reports/upload`: The android app signals the lambda to wake up, fetch the byte array natively out of S3, encode it in memory, and dispatch it to the internal Bedrock LLM boundary.
 
 ## Code Structure Patterns
 Our lambdas rigidly follow the **Service-Repository Pattern**:

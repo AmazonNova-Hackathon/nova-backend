@@ -6,7 +6,7 @@ def test_upload_request_validation():
     """Ensure Pydantic models validate input accurately."""
     req = UploadRequest(
         patientId="demo-001",
-        imageBase64="VGhpcyBpcyBhIG1vY2sgYmFzZTY0IHN0cmluZw==",
+        s3Key="demo-001/report-123.jpg",
         reportType="lab_report"
     )
     assert req.patientId == "demo-001"
