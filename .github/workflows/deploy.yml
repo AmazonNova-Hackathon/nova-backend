@@ -1,0 +1,53 @@
+name: AWS SAM Backend Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write # Required for requesting the AWS JSON web token
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies and pytest
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          
+      - name: Run Unit Tests
+        env:
+          PYTHONPATH: .
+        run: |
+          pytest tests/
+
+      - name: Setup AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      # Replace with an IAM Service Role ARN or configure Access Keys in secrets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Build SAM Application
+        working-directory: ./backend
+        run: sam build --use-container
+
+      - name: Deploy SAM Application
+        working-directory: ./backend
+        run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset

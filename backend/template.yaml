@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  MediAgent Backend (Amazon Nova Hackathon)
+  SAM Template for API Gateway, Bedrock Invocation, and DynamoDB storage.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.14
+    Environment:
+      Variables:
+        FHIR_TABLE_NAME: !Ref MediAgentFhirTable
+        S3_BUCKET_NAME: !Ref MediAgentReportsBucket
+        BEDROCK_REGION: us-east-1
+        NOVA_MODEL_ID: amazon.nova-lite-v1:0
+        DEMO_PATIENT_ID: patient-demo-001
+
+Resources:
+  # ----------------------------------------------------------------------------
+  # DynamoDB Table
+  # ----------------------------------------------------------------------------
+  MediAgentFhirTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: mediagent-fhir
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+
+  # ----------------------------------------------------------------------------
+  # S3 Bucket for Uploads
+  # ----------------------------------------------------------------------------
+  MediAgentReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub mediagent-reports-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # ----------------------------------------------------------------------------
+  # API Gateway
+  # ----------------------------------------------------------------------------
+  MediAgentApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          Description: Usage plan for MediAgent hackathon demo
+
+  # ----------------------------------------------------------------------------
+  # Lambda 1: Extract Report
+  # ----------------------------------------------------------------------------
+  ExtractReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/extract_report/
+      Handler: app.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MediAgentFhirTable
+        - S3CrudPolicy:
+            BucketName: !Ref MediAgentReportsBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        UploadReportApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /reports/upload
+            Method: post
+        GetReportsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /reports
+            Method: get
+        GetObservationsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /observations
+            Method: get
+
+  # ----------------------------------------------------------------------------
+  # Lambda 2: Agent Chat
+  # ----------------------------------------------------------------------------
+  AgentChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/agent_chat/
+      Handler: app.lambda_handler
+      Timeout: 60
+      MemorySize: 1024
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MediAgentFhirTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: "*"
+      Events:
+        ChatApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /chat
+            Method: post
+
+Outputs:
+  ApiBaseUrl:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${MediAgentApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+  ApiKeyDoc:
+    Description: "To get the API Key, go to API Gateway console -> API Keys, or use CLI: aws apigateway get-api-keys --include-values"
+    Value: "Check AWS Console or run CLI command"
+  ExtractReportFunctionArn:
+    Description: "Extract Report Lambda Function ARN"
+    Value: !GetAtt ExtractReportFunction.Arn
+  AgentChatFunctionArn:
+    Description: "Agent Chat Lambda Function ARN"
+    Value: !GetAtt AgentChatFunction.Arn
