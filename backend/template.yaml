@@ -14,7 +14,7 @@ Globals:
         FHIR_TABLE_NAME: !Ref MediAgentFhirTable
         S3_BUCKET_NAME: !Ref MediAgentReportsBucket
         BEDROCK_REGION: us-east-1
-        NOVA_MODEL_ID: amazon.nova-lite-v1:0
+        NOVA_MODEL_ID: amazon.nova-2-lite-v1:0
         DEMO_PATIENT_ID: patient-demo-001
 
 Resources:
@@ -55,6 +55,28 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [PUT]
+            AllowedOrigins: ['*']
+            MaxAge: 300
+
+  # ----------------------------------------------------------------------------
+  # S3 Bucket for Guidelines (Knowledge Base)
+  # ----------------------------------------------------------------------------
+  MediAgentGuidelinesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub mediagent-guidelines-${AWS::AccountId}
+
+  # ----------------------------------------------------------------------------
+  # S3 Bucket for Knowledge Base Multimodal Storage (Chunks)
+  # ----------------------------------------------------------------------------
+  MediAgentGuidelinesChunksBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub mediagent-guidelines-chunks-${AWS::AccountId}
 
   # ----------------------------------------------------------------------------
   # API Gateway
@@ -99,12 +121,11 @@ Resources:
             RestApiId: !Ref MediAgentApi
             Path: /reports/upload-url
             Method: get
-        UploadReportApi:
-          Type: Api
+        S3UploadTrigger:
+          Type: S3
           Properties:
-            RestApiId: !Ref MediAgentApi
-            Path: /reports/upload
-            Method: post
+            Bucket: !Ref MediAgentReportsBucket
+            Events: s3:ObjectCreated:*
         GetReportsApi:
           Type: Api
           Properties:
@@ -117,6 +138,37 @@ Resources:
             RestApiId: !Ref MediAgentApi
             Path: /observations
             Method: get
+        GetReportStatusApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /reports/{reportId}/status
+            Method: get
+        # Family APIs
+        CreateFamilyApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /family
+            Method: post
+        AddFamilyMemberApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /family/members
+            Method: post
+        GetFamilyDashboardApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /family/dashboard
+            Method: get
+        UpdateFamilyMemberApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /family/members/{memberId}
+            Method: patch
 
   # ----------------------------------------------------------------------------
   # Lambda 2: Agent Chat
@@ -128,14 +180,18 @@ Resources:
       Handler: app.lambda_handler
       Timeout: 60
       MemorySize: 1024
+      Environment:
+        Variables:
+          # Injected manually after creating the Agent in the Bedrock Console
+          AGENT_ID: "QKOQZAZT9C"
+          AGENT_ALIAS_ID: "7MVGBJC3KY"
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
         - Statement:
             - Effect: Allow
               Action:
-                - bedrock:InvokeModel
-                - bedrock:InvokeModelWithResponseStream
+                - bedrock:InvokeAgent
               Resource: "*"
       Events:
         ChatApi:
@@ -144,6 +200,126 @@ Resources:
             RestApiId: !Ref MediAgentApi
             Path: /chat
             Method: post
+
+  # ----------------------------------------------------------------------------
+  # Lambda 3: Insights Engine
+  # ----------------------------------------------------------------------------
+  InsightsEngineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/insights_engine/
+      Handler: app.lambda_handler
+      Timeout: 120
+      MemorySize: 1024
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MediAgentFhirTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Description: Daily proactive insights generation
+        GetInsightsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /insights
+            Method: get
+        MarkInsightReadApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /insights/{insightId}
+            Method: patch
+        GenerateInsightsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /insights/generate
+            Method: post
+        GetFollowupsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /followups
+            Method: get
+        UpdateFollowupApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /followups/{followUpId}
+            Method: patch
+
+  # ----------------------------------------------------------------------------
+  # Lambda 4: Voice Gateway
+  # ----------------------------------------------------------------------------
+  VoiceGatewayFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/voice_gateway/
+      Handler: app.lambda_handler
+      Timeout: 60
+      MemorySize: 512
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModelWithResponseStream
+              Resource: "*"
+      Events:
+        VoiceSessionApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /voice/session
+            Method: post
+
+  # ----------------------------------------------------------------------------
+  # Action Group Lambdas (Invoked by Bedrock Agent)
+  # ----------------------------------------------------------------------------
+  ActionHealthDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/agent_chat/action_groups/
+      Handler: health_data_actions.lambda_handler
+      Timeout: 15
+      MemorySize: 256
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MediAgentFhirTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+
+  ActionFamilyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/agent_chat/action_groups/
+      Handler: family_actions.lambda_handler
+      Timeout: 15
+      MemorySize: 256
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MediAgentFhirTable
+
+  ActionTrendsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/agent_chat/action_groups/
+      Handler: trend_actions.lambda_handler
+      Timeout: 15
+      MemorySize: 256
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MediAgentFhirTable
 
 Outputs:
   ApiBaseUrl:
