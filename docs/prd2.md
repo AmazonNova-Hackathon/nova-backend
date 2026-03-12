@@ -165,12 +165,13 @@ Lambda functions get IAM execution roles from SAM template — no API keys in co
 | Service | Resource | Purpose |
 |---|---|---|
 | API Gateway | `ChetanaApi` (prod) | REST entry point, CORS enabled |
-| Lambda 1 | `chetana-extract-report` | Presigned URL generation + S3 event-triggered Nova extraction + FHIR storage |
-| Lambda 2 | `chetana-agent-chat` | Bedrock Agent invocation — chat, trends, family insights |
-| Lambda 3 | `chetana-insights-engine` | Proactive insights, follow-up scheduling, notifications |
-| Lambda 4 | `chetana-voice-gateway` | Nova 2 Sonic bidirectional streaming for voice |
-| DynamoDB | `chetana-fhir` | Single-table: families, members, reports, observations |
-| S3 | `chetana-reports-{acctId}` | Original report images, AES-256, no public access |
+| Lambda 1 | `mediagent-extract-report` | Presigned URL generation + S3 event-triggered Nova extraction + FHIR storage |
+| Lambda 2 | `mediagent-agent-chat` | Bedrock Agent invocation — chat, trends, family insights |
+| Lambda 3 | `mediagent-insights-engine` | Proactive insights, follow-up scheduling, notifications |
+| Lambda 4 | `mediagent-voice-gateway` | Nova 2 Sonic bidirectional streaming for voice |
+| Lambda 5 | `mediagent-family-management` | Dedicated management for families and members |
+| DynamoDB | `mediagent-fhir` | Single-table: families, members, reports, observations |
+| S3 | `mediagent-reports-{acctId}` | Original report images, AES-256, no public access |
 | Bedrock | Nova 2 Lite, Embeddings, Sonic, Micro | All four AI models |
 | Bedrock Agent | `chetana-health-agent` | Managed agent — orchestrates reasoning, tools, RAG, guardrails |
 | Bedrock Guardrails | `chetana-samd-guardrail` | Platform-level SaMD safety enforcement |
@@ -608,30 +609,23 @@ Query lab values with filters.
 
 ---
 
-### Family APIs (Lambda 1)
+### Family APIs (Lambda 5)
 
-#### POST /family
+#### POST /families
 ```json
-{ "familyName": "Sharma Family", "createdBy": "member-uuid" }
+{ "name": "Sharma Family" }
 ```
 
-#### POST /family/members
+#### POST /families/{familyId}/members
 ```json
 {
-  "familyId": "family-demo-001",
   "name": "Sunita Sharma",
-  "relationship": "spouse | parent | child | self",
-  "dateOfBirth": "1985-06-15",
-  "gender": "female | male | other",
-  "preferredLanguage": "hi"
+  "id": "optional-uuid"
 }
 ```
 
-#### GET /family/dashboard?familyId=...
-Returns aggregated family health view with per-member stats + cross-family insights.
-
-#### PATCH /family/members/{memberId}
-Update member profile (name, language, etc).
+#### GET /families/{familyId}/members
+Returns all family members.
 
 ---
 

@@ -1,117 +1,120 @@
-import json
-import logging
-from botocore.config import Config
-import boto3
+"""
+Agent Service — Chat via Bedrock Agent Runtime
 
-from lambdas.shared.config import BEDROCK_REGION, NOVA_MODEL_ID
+Replaces the old bedrock-runtime.converse manual tool-use loop.
+The Bedrock Agent (with its Action Group Lambdas) now handles all tool
+dispatch and multi-turn memory. This service simply:
+  1. Calls bedrock-agent-runtime.invoke_agent
+  2. Consumes the EventStream, assembling text chunks
+  3. Returns a ChatResponse with the assembled reply and the sessionId
+"""
+import uuid
+import os
+from botocore.config import Config
+from botocore.exceptions import ClientError
+import boto3
+from aws_lambda_powertools import Logger
+
 from lambdas.shared.models.requests import ChatRequest
 from lambdas.shared.models.responses import ChatResponse
 
-from prompts import AGENT_SYSTEM_PROMPT
-from agent_tools import (
-    BEDROCK_TOOLS,
-    execute_tool,
-    reset_citations,
-    get_citations
-)
+logger = Logger(service="agent-chat")
 
-logger = logging.getLogger()
+AGENT_ID = os.environ.get("AGENT_ID", "")
+AGENT_ALIAS_ID = os.environ.get("AGENT_ALIAS_ID", "")
+BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 
 retry_config = Config(retries={"max_attempts": 5, "mode": "standard"})
-bedrock_client = boto3.client('bedrock-runtime', region_name=BEDROCK_REGION, config=retry_config)
+agent_runtime = boto3.client(
+    "bedrock-agent-runtime",
+    region_name=BEDROCK_REGION,
+    config=retry_config,
+)
+
 
 def process_chat(raw_payload: dict) -> ChatResponse:
-    req = ChatRequest(**raw_payload)
-    
-    # 1. Reset citations
-    reset_citations()
-    
-    # 2. Reconstruct Converse API message history
-    messages = []
-    
-    for turn in req.conversationHistory:
-        if turn.role in ["user", "assistant"]:  # Converse API only supports user/assistant messages at root
-            messages.append({
-                "role": turn.role,
-                "content": [{"text": turn.content}]
-            })
-            
-    messages.append({
-        "role": "user",
-        "content": [{"text": req.message}]
-    })
+    """
+    Invoke the Bedrock Agent and assemble the streamed response.
 
-    system_prompts = [{"text": AGENT_SYSTEM_PROMPT}]
+    Session continuity:
+      - Client sends sessionId="" to start a new conversation.
+      - On first call we generate a UUID and use it as sessionId.
+      - On subsequent turns the client echoes the same sessionId back
+        so the Bedrock Agent recalls context from previous turns.
+
+    Family context:
+      - familyId is injected as a sessionState attribute so the agent's
+        Action Group instructions can reference it and pass it to the
+        Action Group Lambda functions.
+    """
+    req = ChatRequest(**raw_payload)
+
+    # Use the client-supplied session or mint a fresh one
+    session_id = req.sessionId if req.sessionId else str(uuid.uuid4())
+
+    logger.info(
+        "Invoking Bedrock Agent",
+        extra={
+            "agentId": AGENT_ID,
+            "agentAliasId": AGENT_ALIAS_ID,
+            "sessionId": session_id,
+            "familyId": req.familyId,
+        },
+    )
 
     try:
-        # Loop to natively handle agentic tool choices
-        MAX_LOOPS = 5
-        response_text = ""
-        
-        for _ in range(MAX_LOOPS):
-            response = bedrock_client.converse(
-                modelId=NOVA_MODEL_ID,
-                messages=messages,
-                system=system_prompts,
-                toolConfig={"tools": BEDROCK_TOOLS}
+        response = agent_runtime.invoke_agent(
+            agentId=AGENT_ID,
+            agentAliasId=AGENT_ALIAS_ID,
+            sessionId=session_id,
+            inputText=req.message,
+            sessionState={
+                # Session attributes are available to Action Group instructions
+                # and can be forwarded to action group Lambda functions.
+                "sessionAttributes": {
+                    "familyId": req.familyId,
+                }
+            },
+        )
+
+        # Consume the EventStream — assemble all text chunk bytes into a reply.
+        # API Gateway doesn't support true HTTP streaming, so we collect everything
+        # before returning. The sessionId is preserved for the next client turn.
+        reply_parts = []
+        for event in response["completion"]:
+            if "chunk" in event:
+                chunk_bytes = event["chunk"].get("bytes", b"")
+                if chunk_bytes:
+                    reply_parts.append(chunk_bytes.decode("utf-8"))
+
+        reply = "".join(reply_parts).strip()
+
+        if not reply:
+            reply = (
+                "I wasn't able to retrieve the information you requested. "
+                "Please try rephrasing your question."
             )
-            
-            output_message = response['output']['message']
-            messages.append(output_message) # Append assistant's turn directly
-            
-            # Check if Nova decided to stop or use a tool
-            stop_reason = response['stopReason']
-            
-            if stop_reason == "tool_use":
-                tool_results = []
-                
-                for content_block in output_message['content']:
-                    if 'toolUse' in content_block:
-                        tool_use = content_block['toolUse']
-                        tool_use_id = tool_use['toolUseId']
-                        tool_name = tool_use['name']
-                        tool_input = tool_use['input']
-                        
-                        logger.info(f"Agent requested tool: {tool_name} with {tool_input}")
-                        
-                        try:
-                            # Safely execute python dispatch passing the patientId context silently
-                            result_string = execute_tool(tool_name, req.patientId, tool_input)
-                            tool_result = {
-                                "toolUseId": tool_use_id,
-                                "content": [{"json": {"result": result_string}}]
-                            }
-                        except Exception as e:
-                            logger.error(f"Tool execution failed: {e}")
-                            tool_result = {
-                                "toolUseId": tool_use_id,
-                                "content": [{"text": f"Error executing tool: {e}"}],
-                                "status": "error"
-                            }
-                            
-                        tool_results.append({"toolResult": tool_result})
-                
-                # Append the user response mapping the tool output back into the conversation for thinking
-                messages.append({
-                    "role": "user",
-                    "content": tool_results
-                })
-            else:
-                # Finished reasoning
-                for content_block in output_message['content']:
-                    if 'text' in content_block:
-                        response_text += content_block['text']
-                break
-                
-    except Exception as e:
-        logger.error(f"Bedrock Converse Agent failure: {e}")
-        response_text = "I'm having trouble analyzing your request right now. Please try again later."
-    
-    # 5. Extract Citations
-    referenced_reports, referenced_observations = get_citations()
-    
+
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        if error_code == "AccessDeniedException":
+            logger.error("Bedrock Agent access denied — check IAM permissions for bedrock:InvokeAgent")
+            reply = "I'm unable to access the health assistant right now. Please try again shortly."
+        elif error_code == "ResourceNotFoundException":
+            logger.error(
+                "Bedrock Agent not found",
+                extra={"agentId": AGENT_ID, "agentAliasId": AGENT_ALIAS_ID},
+            )
+            reply = "The health assistant is not configured. Please contact support."
+        else:
+            logger.exception("Bedrock ClientError invoking agent")
+            reply = "I'm having trouble processing your request right now. Please try again later."
+
+    except Exception:
+        logger.exception("Unexpected non-AWS error invoking Bedrock Agent")
+        reply = "I'm having trouble processing your request right now. Please try again later."
+
     return ChatResponse(
-        reply=response_text,
-        referencedReports=referenced_reports,
-        referencedObservations=referenced_observations
+        reply=reply,
+        sessionId=session_id,
     )

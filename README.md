@@ -5,20 +5,21 @@ Serverless AWS backend for an Android app that extracts lab data using Amazon No
 ## 🚀 Quick Start
 
 ### Prerequisites
-* Python 3.12+ 
+* Python 3.12 (Strictly required for local `sam build` without Docker)
 * AWS CLI installed and configured
 * AWS SAM CLI installed
-* Docker Desktop (optional, but recommended if Python versions drift)
+* Docker Desktop (Optional: Use `sam build --use-container` if Python versions differ)
 
 ### 1. Install Dependencies
 ```bash
-# Recommended: Create a virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate # Mac/Linux
+# Re-create venv with Python 3.12
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1  # Windows
+# source .venv/bin/activate # Mac/Linux
 
-# Install development dependencies
+# Install development and runtime dependencies
 pip install -r requirements-dev.txt
+pip install boto3 pydantic aws-lambda-powertools
 ```
 
 ### 2. Local Testing

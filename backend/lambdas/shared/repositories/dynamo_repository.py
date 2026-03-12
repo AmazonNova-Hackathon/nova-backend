@@ -147,3 +147,51 @@ class DynamoRepository:
         item['pk'] = self._get_pk(family_id)
         item['sk'] = f"FOLLOWUP#{followup.memberId}#{followup.suggestedDate}#{followup.id}"
         self.table.put_item(Item=item)
+
+    def get_insights(self, family_id: str, member_id: str = None) -> list[dict]:
+        """Query all InsightCards for a family, optionally filtered to one member."""
+        sk_prefix = f"INSIGHT#{member_id}#" if member_id else "INSIGHT#"
+        response = self.table.query(
+            KeyConditionExpression=Key('pk').eq(self._get_pk(family_id)) & Key('sk').begins_with(sk_prefix)
+        )
+        return response.get('Items', [])
+
+    def get_followups(self, family_id: str, member_id: str = None) -> list[dict]:
+        """Query all FollowUps for a family, optionally filtered to one member."""
+        sk_prefix = f"FOLLOWUP#{member_id}#" if member_id else "FOLLOWUP#"
+        response = self.table.query(
+            KeyConditionExpression=Key('pk').eq(self._get_pk(family_id)) & Key('sk').begins_with(sk_prefix)
+        )
+        return response.get('Items', [])
+
+    def update_insight(self, family_id: str, member_id: str, generated_at: str,
+                       insight_id: str, updates: dict) -> None:
+        """Partial update of an InsightCard (e.g. mark as read)."""
+        insights = self.get_insights(family_id, member_id)
+        insight = next((i for i in insights if i.get('id') == insight_id), None)
+        if not insight:
+            raise ValueError(f"Insight {insight_id} not found")
+        sk = f"INSIGHT#{member_id}#{generated_at}#{insight_id}"
+        update_expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
+        expr_names = {f"#{k}": k for k in updates}
+        expr_values = {f":{k}": v for k, v in updates.items()}
+        self.table.update_item(
+            Key={'pk': self._get_pk(family_id), 'sk': sk},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_names,
+            ExpressionAttributeValues=expr_values,
+        )
+
+    def update_followup(self, family_id: str, member_id: str, suggested_date: str,
+                        followup_id: str, updates: dict) -> None:
+        """Partial update of a FollowUp (e.g. accept / dismiss)."""
+        sk = f"FOLLOWUP#{member_id}#{suggested_date}#{followup_id}"
+        update_expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
+        expr_names = {f"#{k}": k for k in updates}
+        expr_values = {f":{k}": v for k, v in updates.items()}
+        self.table.update_item(
+            Key={'pk': self._get_pk(family_id), 'sk': sk},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_names,
+            ExpressionAttributeValues=expr_values,
+        )

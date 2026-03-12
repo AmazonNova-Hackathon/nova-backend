@@ -1,5 +1,4 @@
 from typing import Literal
-
 from pydantic import BaseModel
 
 
@@ -15,6 +14,9 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    patientId: str
+    familyId: str
     message: str
-    conversationHistory: list[ChatMessage] = []
+    # sessionId: empty string = start new agent conversation; non-empty = continue existing session.
+    # The Bedrock Agent holds multi-turn conversation history server-side via sessionId,
+    # so conversationHistory is no longer needed on the client side.
+    sessionId: str = ""

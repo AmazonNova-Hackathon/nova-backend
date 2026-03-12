@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 class Family(BaseModel):
     id: str  # familyId
-    name: str
+    name: Optional[str] = None
 
 class Member(BaseModel):
     id: str  # memberId

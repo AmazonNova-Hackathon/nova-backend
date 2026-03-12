@@ -8,7 +8,7 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 512
-    Runtime: python3.14
+    Runtime: python3.12
     Environment:
       Variables:
         FHIR_TABLE_NAME: !Ref MediAgentFhirTable
@@ -281,7 +281,33 @@ Resources:
             Method: post
 
   # ----------------------------------------------------------------------------
-  # Action Group Lambdas (Invoked by Bedrock Agent)
+  # Lambda 5: Family Management
+  # ----------------------------------------------------------------------------
+  FamilyManagementFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/family_management/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MediAgentTable
+      Events:
+        FamiliesApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families
+            Method: post
+        FamilyMembersApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families/{familyId}/members
+            Method: any
+
   # ----------------------------------------------------------------------------
   ActionHealthDataFunction:
     Type: AWS::Serverless::Function
@@ -299,6 +325,15 @@ Resources:
                 - bedrock:InvokeModel
               Resource: "*"
 
+  # Allow the Bedrock Agent service to invoke ActionHealthDataFunction
+  ActionHealthDataFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ActionHealthDataFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
   ActionFamilyFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -310,6 +345,15 @@ Resources:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
 
+  # Allow the Bedrock Agent service to invoke ActionFamilyFunction
+  ActionFamilyFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ActionFamilyFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
   ActionTrendsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -320,6 +364,15 @@ Resources:
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
+
+  # Allow the Bedrock Agent service to invoke ActionTrendsFunction
+  ActionTrendsFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ActionTrendsFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
 
 Outputs:
   ApiBaseUrl:
@@ -334,3 +387,12 @@ Outputs:
   AgentChatFunctionArn:
     Description: "Agent Chat Lambda Function ARN"
     Value: !GetAtt AgentChatFunction.Arn
+  ActionHealthDataFunctionArn:
+    Description: "[Action Group] Health Data Lambda ARN — wire into Bedrock Agent chetana-action-health-data"
+    Value: !GetAtt ActionHealthDataFunction.Arn
+  ActionFamilyFunctionArn:
+    Description: "[Action Group] Family Lambda ARN — wire into Bedrock Agent chetana-action-family"
+    Value: !GetAtt ActionFamilyFunction.Arn
+  ActionTrendsFunctionArn:
+    Description: "[Action Group] Trends Lambda ARN — wire into Bedrock Agent chetana-action-trends"
+    Value: !GetAtt ActionTrendsFunction.Arn

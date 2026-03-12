@@ -28,6 +28,7 @@ class ErrorResponse(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    sessionId: str = ""  # Client must echo this back on the next turn to continue the session
     referencedReports: list[str] = []
     referencedObservations: list[str] = []
     disclaimer: str = (

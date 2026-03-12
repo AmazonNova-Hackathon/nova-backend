@@ -51,3 +51,23 @@ Medical professionals require trust. Whenever data is visually rendered, the use
 - **From Graphs / Tables**: Every `Observation` dict contains a `reportId`. You can lookup the parent `DiagnosticReport` (via the `GET /reports` API) to grab the `s3Key`.
 - **From Agent Chat**: The response from `POST /chat` includes two arrays: `referencedReports` and `referencedObservations`. 
    - *UI Suggestion*: Render these as clickable **Citation Chips** below the Chat Bubble. If tapped, resolve the `reportId`, download the raw image byte sequence from S3 using the `/upload-url` logic in reverse, and display the original source document inside a modal Viewer!
+
+---
+
+## 👨‍👩‍👧‍👦 5. Family Hub & Smart Onboarding
+
+The backend is designed for a low-friction "Family First" onboarding flow. You can either register a family explicitly or let the system bootstrap it from the first report.
+
+### Option A: Manual Setup (Registration Screen)
+1. **Create Family**: `POST /families` (Optionally payload: `{"name": "The Smiths"}`). Store the `familyId`.
+2. **Add Member**: `POST /families/{familyId}/members` (Payload: `{"name": "Alice"}`). Store the `memberId`.
+
+### Option B: Smart Onboarding (Frictionless)
+1. **Upload Report**: Use `memberId = "detect"` in your `POST /reports/upload` call.
+2. **Behavior**: 
+   - If the report belongs to a new person, the backend **automatically creates** a new member using the patient name extracted from the lab report.
+   - The response will include the new `memberId`.
+   - *UI Suggestion*: This is perfect for the "First Lab Report Scan" where the user hasn't set up a profile yet.
+
+### Dashboard: `GET /families/{familyId}/members`
+Use this to render the "Switch Profile" or "Family Dashboard" screen, listing all members and their basic metadata.

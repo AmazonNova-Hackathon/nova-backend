@@ -118,3 +118,65 @@ paths:
       responses:
         '200':
           description: Response from the LLM agent, containing `referencedReports` or `referencedObservations` arrays for UI Citations.
+
+  /families:
+    post:
+      summary: Create a new family.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "The Miller Family"
+      responses:
+        '201':
+          description: Family created successfully. Returns the `familyId`.
+
+  /families/{familyId}/members:
+    post:
+      summary: Register a new member to a family.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "Alice Miller"
+                id:
+                  type: string
+                  description: Optional ID (UUID).
+      responses:
+        '201':
+          description: Member added successfully. Returns `memberId`.
+    get:
+      summary: List all members of a family.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of family members.
