@@ -1,0 +1,32 @@
+{
+	"folders": [
+		{
+			"path": "backend",
+			"name": "Backend"
+		},
+		{
+			"path": "frontend-web",
+			"name": "Web Frontend"
+		},
+		{
+			"path": "frontend-mobile",
+			"name": "Mobile Frontend"
+		},
+		{
+			"path": "docs",
+			"name": "Documentation"
+		},
+		{
+			"path": ".",
+			"name": "Root"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"backend": true,
+			"frontend-web": true,
+			"frontend-mobile": true,
+			"docs": true
+		}
+	}
+}

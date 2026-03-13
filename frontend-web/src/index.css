@@ -1,0 +1,64 @@
+:root {
+  /* Aesthetics: Clinical Vitality Theme */
+  --obsidian-deep: hsl(220, 15%, 10%);
+  --neon-pulse: hsl(190, 100%, 50%);
+  --healing-green: hsl(150, 60%, 45%);
+  --solar-amber: hsl(45, 95%, 60%);
+  
+  --bg-color: var(--obsidian-deep);
+  --text-primary: hsl(210, 20%, 98%);
+  --text-secondary: hsl(210, 15%, 75%);
+  
+  --glass-bg: hsla(220, 15%, 15%, 0.7);
+  --glass-border: hsla(210, 100%, 100%, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  
+  --font-header: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-header);
+}
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  padding: 1.5rem;
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, 
+    var(--glass-bg) 25%, 
+    hsla(210, 100%, 100%, 0.05) 50%, 
+    var(--glass-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Shimmer mask for actual content loading would go here */
