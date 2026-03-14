@@ -1,0 +1,61 @@
+{
+  "id": "mediagent-prod",
+  "name": "MediAgent — Production (us-east-1)",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "api_key",
+      "value": "I7SiDKhjuOOPLmuy2uEx5RO4CrRSRtu9op7nkLU4",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "familyId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Auto-set by 'Create Family' request test script"
+    },
+    {
+      "key": "memberId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Auto-set by 'Add Family Member' request test script"
+    },
+    {
+      "key": "reportId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "insightId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "s3_presigned_url",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Auto-set by 'Get Pre-Signed Upload URL' test script"
+    },
+    {
+      "key": "s3_key",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Auto-set by 'Get Pre-Signed Upload URL' test script"
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2026-03-14T09:53:00.000Z",
+  "_postman_exported_using": "Postman/11.0"
+}

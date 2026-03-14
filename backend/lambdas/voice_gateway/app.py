@@ -32,7 +32,7 @@ from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 from botocore.exceptions import ClientError
 
-from voice_service import process_voice_turn
+from lambdas.voice_gateway.voice_service import process_voice_turn
 
 logger = Logger(service="voice-gateway")
 

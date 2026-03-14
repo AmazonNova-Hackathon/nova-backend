@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
-from agent_service import process_chat
+from lambdas.agent_chat.agent_service import process_chat
 from lambdas.shared.models.responses import ErrorResponse
 
 logger = Logger(service="agent_chat")

@@ -1,179 +1,326 @@
 {
-	"info": {
-		"_postman_id": "fdbe87f9-da03-49d7-83d2-c2e50529944a",
-		"name": "MediAgent API",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "Step 1: Get Upload URL",
-			"request": {
-				"method": "GET",
-				"header": [
-					{
-						"key": "x-api-key",
-						"value": "{{api_key}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{base_url}}/reports/upload-url?patientId=patient-demo-001",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"reports",
-						"upload-url"
-					],
-					"query": [
-						{
-							"key": "patientId",
-							"value": "patient-demo-001"
-						}
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Step 2: Upload to S3 (Direct)",
-			"request": {
-				"method": "PUT",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "image/jpeg",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "file",
-					"file": {}
-				},
-				"url": {
-					"raw": "{{s3_presigned_url}}",
-					"host": [
-						"{{s3_presigned_url}}"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Step 3: Trigger Extraction Processing",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "x-api-key",
-						"value": "{{api_key}}",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"patientId\": \"patient-demo-001\",\n    \"reportType\": \"lab_report\",\n    \"s3Key\": \"{{s3_key}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/reports/upload",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"reports",
-						"upload"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Chat with Agent",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "x-api-key",
-						"value": "{{api_key}}",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"patientId\": \"patient-demo-001\",\n    \"message\": \"What is my glucose trend?\",\n    \"conversationHistory\": []\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/chat",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"chat"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Get Reports",
-			"request": {
-				"method": "GET",
-				"header": [
-					{
-						"key": "x-api-key",
-						"value": "{{api_key}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{base_url}}/reports?patientId=patient-demo-001",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"reports"
-					],
-					"query": [
-						{
-							"key": "patientId",
-							"value": "patient-demo-001"
-						}
-					]
-				}
-			},
-			"response": []
-		}
-	],
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod",
-			"type": "string"
-		},
-		{
-			"key": "api_key",
-			"value": "I7SiDKhjuOOPLmuy2uEx5RSRtu9op7nkLU4MediA",
-			"type": "string"
-		},
-		{
-			"key": "s3_presigned_url",
-			"value": "PASTE_EXTRACTED_URL_HERE",
-			"type": "string"
-		},
-		{
-			"key": "s3_key",
-			"value": "PASTE_EXTRACTED_KEY_HERE",
-			"type": "string"
-		}
-	]
+  "info": {
+    "_postman_id": "fdbe87f9-da03-49d7-83d2-c2e50529944a",
+    "name": "MediAgent API — v2",
+    "description": "Complete MediAgent API collection. Import the companion environment file (mediagent-environment.json) to set base_url, api_key, familyId, memberId automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "🏠 Families",
+      "item": [
+        {
+          "name": "Create Family",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "    pm.environment.set('familyId', json.id);",
+                  "    console.log('✅ familyId set to:', json.id);",
+                  "} else {",
+                  "    console.error('❌ No id in response:', JSON.stringify(json));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Sharma Family\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/families",
+              "host": ["{{base_url}}"],
+              "path": ["families"]
+            },
+            "description": "Creates a new family. Automatically saves the returned `id` as `{{familyId}}` in your environment."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Family Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "    pm.environment.set('memberId', json.id);",
+                  "    console.log('✅ memberId set to:', json.id);",
+                  "} else {",
+                  "    console.error('❌ No id in response:', JSON.stringify(json));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Rahul Sharma\",\n    \"age\": 35,\n    \"gender\": \"male\",\n    \"relationship\": \"Self\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/families/{{familyId}}/members",
+              "host": ["{{base_url}}"],
+              "path": ["families", "{{familyId}}", "members"]
+            },
+            "description": "Adds a member to {{familyId}}. Automatically saves `id` as `{{memberId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Family Members",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/families/{{familyId}}/members",
+              "host": ["{{base_url}}"],
+              "path": ["families", "{{familyId}}", "members"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📋 Reports",
+      "item": [
+        {
+          "name": "Get Pre-Signed Upload URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.url) { pm.environment.set('s3_presigned_url', json.url); console.log('✅ s3_presigned_url saved'); }",
+                  "if (json.s3Key || json.key) { pm.environment.set('s3_key', json.s3Key || json.key); console.log('✅ s3_key saved'); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/reports/upload-url?familyId={{familyId}}&memberId={{memberId}}&reportType=lab_report",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "upload-url"],
+              "query": [
+                { "key": "familyId", "value": "{{familyId}}" },
+                { "key": "memberId", "value": "{{memberId}}" },
+                { "key": "reportType", "value": "lab_report" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload to S3 (Direct PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "image/jpeg", "type": "text" }],
+            "body": { "mode": "file", "file": {} },
+            "url": {
+              "raw": "{{s3_presigned_url}}",
+              "host": ["{{s3_presigned_url}}"]
+            },
+            "description": "Paste the pre-signed URL from the previous step. Select a file in the Body tab."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Reports",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/reports?familyId={{familyId}}&memberId={{memberId}}",
+              "host": ["{{base_url}}"],
+              "path": ["reports"],
+              "query": [
+                { "key": "familyId", "value": "{{familyId}}" },
+                { "key": "memberId", "value": "{{memberId}}" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Report Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/reports/{{reportId}}/status?familyId={{familyId}}&memberId={{memberId}}",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "{{reportId}}", "status"],
+              "query": [
+                { "key": "familyId", "value": "{{familyId}}" },
+                { "key": "memberId", "value": "{{memberId}}" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔬 Observations",
+      "item": [
+        {
+          "name": "Get Observations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/observations?familyId={{familyId}}&memberId={{memberId}}",
+              "host": ["{{base_url}}"],
+              "path": ["observations"],
+              "query": [
+                { "key": "familyId", "value": "{{familyId}}" },
+                { "key": "memberId", "value": "{{memberId}}" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💡 Insights",
+      "item": [
+        {
+          "name": "Get Insights",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/insights?familyId={{familyId}}&memberId={{memberId}}",
+              "host": ["{{base_url}}"],
+              "path": ["insights"],
+              "query": [
+                { "key": "familyId", "value": "{{familyId}}" },
+                { "key": "memberId", "value": "{{memberId}}" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Insights",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"familyId\": \"{{familyId}}\",\n    \"memberId\": \"{{memberId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/insights/generate",
+              "host": ["{{base_url}}"],
+              "path": ["insights", "generate"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Insight Read",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/insights/{{insightId}}",
+              "host": ["{{base_url}}"],
+              "path": ["insights", "{{insightId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🤖 Chat",
+      "item": [
+        {
+          "name": "Chat with Nova Agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"patientId\": \"{{memberId}}\",\n    \"message\": \"What is my glucose trend over the last 3 months?\",\n    \"conversationHistory\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["chat"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📅 Follow-ups",
+      "item": [
+        {
+          "name": "Get Follow-ups",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/followups?familyId={{familyId}}&memberId={{memberId}}",
+              "host": ["{{base_url}}"],
+              "path": ["followups"],
+              "query": [
+                { "key": "familyId", "value": "{{familyId}}" },
+                { "key": "memberId", "value": "{{memberId}}" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "base_url",        "value": "https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod" },
+    { "key": "api_key",         "value": "I7SiDKhjuOOPLmuy2uEx5RO4CrRSRtu9op7nkLU4" },
+    { "key": "familyId",        "value": "" },
+    { "key": "memberId",        "value": "" },
+    { "key": "reportId",        "value": "" },
+    { "key": "insightId",       "value": "" },
+    { "key": "s3_presigned_url","value": "" },
+    { "key": "s3_key",          "value": "" }
+  ]
 }

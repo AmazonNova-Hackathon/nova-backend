@@ -20,7 +20,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
-from insight_service import run_all_families, run_for_family, generate_insights_for_member
+from lambdas.insights_engine.insight_service import run_all_families, run_for_family, generate_insights_for_member
 
 logger = Logger(service="insights-engine")
 repo = DynamoRepository(TABLE_NAME)

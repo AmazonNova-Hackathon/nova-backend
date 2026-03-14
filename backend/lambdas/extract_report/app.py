@@ -1,3 +1,4 @@
+import _bootstrap  # noqa: F401 — adds backend/ to sys.path in Lambda
 import json
 import traceback
 import urllib.parse
@@ -5,8 +6,8 @@ from pydantic import ValidationError
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
-from extraction_service import process_s3_upload, generate_upload_url
-from report_service import get_reports, get_observations, get_report_status
+from lambdas.extract_report.extraction_service import process_s3_upload, generate_upload_url
+from lambdas.extract_report.report_service import get_reports, get_observations, get_report_status
 from lambdas.shared.models.responses import ErrorResponse
 
 logger = Logger(service="extract_report")

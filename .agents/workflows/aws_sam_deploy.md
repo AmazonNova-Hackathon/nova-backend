@@ -5,14 +5,42 @@ description: Build and deploy the AWS SAM backend stack
 
 This workflow builds the Lambda packages and deploys the stack to AWS using SAM CLI.
 
-1. Navigate to the `backend` directory (or the directory containing `template.yaml`).
-2. Run the SAM build command to resolve Python dependencies and package the applications.
+> ⚠️ **Python 3.12 venv must be active before every build.** SAM validates the `python` binary on PATH — using any other version causes `PythonPipBuilder:Validation` failure.
+
+1. Activate the Python 3.12 virtual environment.
+```powershell
+# Windows
+cd backend
+.\.venv\Scripts\Activate.ps1
+
+# Mac/Linux
+source backend/.venv/bin/activate
+```
+If the venv does not exist yet, create it first:
+```powershell
+py -3.12 -m venv backend/.venv
+```
+
+2. Verify Python version.
+// turbo
+```bash
+python --version   # Must print Python 3.12.x
+```
+
+3. Run the SAM build command.
 // turbo
 ```bash
 sam build
 ```
-3. Deploy the application to the AWS account. If this is the first time, use `--guided`. Otherwise, run the standard deploy.
+
+4. Deploy the application to AWS.
 // turbo
 ```bash
-sam deploy --resolve-s3 || sam deploy --guided
+sam deploy
+```
+If this is the first deploy, add `--guided` and accept all defaults.
+
+5. After deploy, fetch the API key value and update `frontend-web/.env`.
+```bash
+aws apigateway get-api-keys --include-values --region us-east-1 --output table
 ```

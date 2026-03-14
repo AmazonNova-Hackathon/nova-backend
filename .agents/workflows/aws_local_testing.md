@@ -1,19 +1,38 @@
 ---
-description: Test Lambda functions locally using SAM Local Invoke
+description: Test Lambda functions locally without Docker using the Python test runner
 ---
 # AWS SAM Local Testing Workflow
 
-Use this workflow to test individual Lambdas dynamically without deploying to AWS.
+Test Lambda handlers locally without Docker. The `test_local.py` runner imports handlers directly into Python and calls them with mock events against real DynamoDB.
 
-1. Ensure Docker is running.
-2. Build the latest function code.
+> ⚠️ **Python 3.12 venv must be active.** Uses the same venv as the deploy workflow.
+
+1. Activate the Python 3.12 virtual environment.
+```powershell
+# Windows
+cd backend
+.\.venv\Scripts\Activate.ps1
+
+# Mac/Linux
+source backend/.venv/bin/activate
+```
+
+2. Run the import smoke test — no AWS credentials required, confirms all Lambdas can be imported.
 // turbo
 ```bash
-sam build
+py -3.12 test_local.py imports
 ```
-3. Create a mock event JSON file (e.g., `events/upload_event.json`).
-4. Invoke the function locally. Substitute the function name appropriately.
+All 5 Lambdas should print `[OK]`. If any show `[FAIL]` with `ImportError`, the import path is broken — fix before deploying.
+
+3. Run the full integration suite (requires `aws configure` credentials).
 ```bash
-sam local invoke "ExtractReportFunction" -e events/upload_event.json
+py -3.12 test_local.py all
 ```
-5. Check the local terminal for output and logs.
+This creates a real family and member in DynamoDB, then tests observations and insights. Family/member IDs are printed at the end — copy them into Postman for further testing.
+
+4. Run individual suites as needed.
+```bash
+py -3.12 test_local.py families       # POST /families + members flow
+py -3.12 test_local.py observations   # GET /observations
+py -3.12 test_local.py insights       # GET /insights
+```

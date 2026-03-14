@@ -1,60 +1,200 @@
-# MediAgent Backend
+# MediAgent — Chetana Patient Portal
 
-Serverless AWS backend for an Android app that extracts lab data using Amazon Nova Lite, stores it as FHIR R4 in DynamoDB, and lets users seamlessly chat with their health records via a natively implemented agentic workflow on Bedrock Converse.
+Serverless AWS backend for an Android/web app that extracts lab data using Amazon Nova Lite, stores it as FHIR R4 in DynamoDB, and lets users chat with their health records via a native agentic workflow on Bedrock Converse.
 
-## 🚀 Quick Start
+---
+
+## 🗂 Project Structure
+
+```
+medi-agent/
+├── backend/              # SAM application (all Lambda functions)
+│   ├── lambdas/
+│   │   ├── shared/       # Shared models, repos, config
+│   │   ├── family_management/
+│   │   ├── extract_report/
+│   │   ├── insights_engine/
+│   │   ├── agent_chat/
+│   │   └── voice_gateway/
+│   ├── _bootstrap.py     # Root-level path bootstrap (required for Lambda imports)
+│   ├── test_local.py     # No-Docker local test runner
+│   ├── requirements.txt
+│   └── template.yaml     # SAM infrastructure definition
+├── frontend-web/         # Vite + React web frontend
+└── docs/                 # Postman collection, API spec, PRD
+```
+
+---
+
+## ⚡ Quick Start
 
 ### Prerequisites
-* Python 3.12 (Strictly required for local `sam build` without Docker)
-* AWS CLI installed and configured
-* AWS SAM CLI installed
-* Docker Desktop (Optional: Use `sam build --use-container` if Python versions differ)
 
-### 1. Install Dependencies
-```bash
-# Re-create venv with Python 3.12
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1  # Windows
-# source .venv/bin/activate # Mac/Linux
+| Tool | Version | Notes |
+|------|---------|-------|
+| Python | **3.12 exactly** | SAM Lambda runtime; use `py -3.12` on Windows |
+| AWS CLI | latest | `aws configure` must be run |
+| AWS SAM CLI | latest | `sam --version` to confirm |
+| Node.js | 18+ | For the frontend |
 
-# Install development and runtime dependencies
-pip install -r requirements-dev.txt
-pip install boto3 pydantic aws-lambda-powertools
-```
+> **Why Python 3.12 exactly?** Lambda runtime is `python3.12`. Using any other version (e.g. 3.14) for `sam build` will fail with a "Binary validation failed" error.
 
-### 2. Local Testing
-You can start the AWS API Gateway locally to test the endpoints without deploying.
-```bash
+---
+
+### 1. Backend Setup
+
+**Always work inside the Python 3.12 virtual environment.**
+
+```powershell
+# Windows (PowerShell)
 cd backend
-sam build
-sam local start-api
-```
-*Note: This requires valid AWS credentials to reach the cloud DynamoDB and Bedrock.*
+py -3.12 -m venv .venv          # Create venv once
+.\.venv\Scripts\Activate.ps1    # Activate — do this every terminal session
 
-### 3. Deployment (AWS SAM)
-The AWS Serverless Application Model (SAM) handles provisioning ALL necessary infrastructure and internal Lambda environment variables (like DynamoDB table names) for you.
-
-```bash
+# Mac / Linux
 cd backend
-sam build
-sam deploy --guided
+python3.12 -m venv .venv
+source .venv/bin/activate
 ```
-Accept default prompts. Keep in mind that since Hackathon APIs are public to the Android app without Cognito, say **yes** when SAM warns that your functions have no authentication.
 
-## 🔐 Environment & Security
+Verify you're in the right environment:
+```bash
+python --version   # Must print Python 3.12.x
+```
 
-### 1. API Authentication (API Keys)
-The API logic requires an `x-api-key` header for security. You can find the deployed Auto-Generated API Key from the API Gateway dashboard inside the AWS Console under **API Keys**.
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-### 2. CI/CD GitHub Secrets
-To use the automated GitHub Actions deployment pipeline (`.github/workflows/deploy.yml`), configure the following Repository Secrets in your GitHub repo settings:
-- `AWS_ACCESS_KEY_ID`: IAM user access key (needs CloudFormation/Lambda/API Gateway permissions).
-- `AWS_SECRET_ACCESS_KEY`: IAM user secret access key.
+> ⚠️ **Never skip venv activation before `sam build` or `sam deploy`.** SAM validates the Python binary on PATH — if it finds 3.14 (or any non-3.12 version) the build will fail.
 
-### 3. AWS Native Integration
-We do not use messy `.env` files locally because we rely strictly on AWS native CloudFormation referencing. The `template.yaml` defines and securely passes resources like `TABLE_NAME` and `BUCKET_NAME` directly down into the Lambda function's runtime environment!
+---
 
-## 📖 API & Documentation
-- **API Spec**: [Swagger OpenAPI](docs/swagger.yaml) | [Postman Collection](docs/mediagent-postman-collection.json)
-- **UI Integrations**: [Android Guidelines](docs/android_guidelines.md) (Graphs, Citations, Alerts)
-- **Design Details**: [PRD](docs/PRD.md) | [Architecture Patterns](docs/architecture.md)
+### 2. Local Testing (No Docker Required)
+
+The `test_local.py` runner imports Lambda handlers directly into Python and invokes them with mock events. No Docker, no SAM local server needed.
+
+```powershell
+# Make sure venv is active first!
+cd backend
+.\.venv\Scripts\Activate.ps1
+
+# Import smoke test — confirms all Lambdas can be imported (catches _bootstrap errors)
+py -3.12 test_local.py imports
+
+# Full integration test — creates a real family + member in DynamoDB then reads back
+py -3.12 test_local.py all
+
+# Test individual suites
+py -3.12 test_local.py families
+py -3.12 test_local.py observations
+py -3.12 test_local.py insights
+```
+
+> ℹ️ The `all` suite hits real DynamoDB. AWS credentials must be configured (`aws configure`).
+> At the end of a run, family/member IDs are printed — copy them into Postman for further testing.
+
+---
+
+### 3. Postman API Testing
+
+Import both files from `docs/` into Postman:
+
+1. **Collection**: `docs/mediagent-postman-collection.json`
+2. **Environment**: `docs/mediagent-environment.json` (sets `base_url`, `api_key`)
+
+**Recommended test flow** (variables cascade automatically via test scripts):
+
+```
+Create Family  →  Add Family Member  →  Get Observations  →  Get Insights  →  Chat
+```
+
+After "Create Family" runs, `{{familyId}}` is auto-set. After "Add Family Member", `{{memberId}}` is auto-set. All subsequent requests use them automatically.
+
+---
+
+### 4. Deployment
+
+```powershell
+# Always activate venv before building!
+cd backend
+.\.venv\Scripts\Activate.ps1
+
+sam build
+sam deploy
+```
+
+On first deploy use `sam deploy --guided` and accept all defaults.
+
+> After deploy, fetch the auto-generated API key:
+> ```bash
+> aws apigateway get-api-keys --include-values --region us-east-1 --output table
+> ```
+> Paste it into `frontend-web/.env` as `VITE_API_KEY`.
+
+---
+
+### 5. Frontend Setup
+
+```powershell
+cd frontend-web
+npm install
+npm run dev   # Starts at http://localhost:5173
+```
+
+Create `frontend-web/.env`:
+```env
+VITE_API_URL=https://<your-api-id>.execute-api.us-east-1.amazonaws.com/prod
+VITE_API_KEY=<your-api-key-from-above>
+```
+
+---
+
+## 🔐 Security & Configuration
+
+| Aspect | How it works |
+|--------|-------------|
+| API auth | `x-api-key` header required on all requests. Key auto-generated by SAM. |
+| Lambda config | `TABLE_NAME`, `BUCKET_NAME` etc. passed via CloudFormation — no `.env` files in Lambda |
+| Frontend config | `.env` file (gitignored) holds `VITE_API_URL` and `VITE_API_KEY` |
+| GitHub CI/CD | Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (see `.github/workflows/deploy.yml`) |
+
+---
+
+## 🏗 Architecture
+
+| Layer | Technology |
+|-------|-----------|
+| API | AWS API Gateway (REST, API Key auth) |
+| Compute | AWS Lambda (Python 3.12, SAM) |
+| Storage | DynamoDB (FHIR R4 records), S3 (lab report PDFs) |
+| AI | Amazon Bedrock — Nova Lite (extraction + insights), Bedrock Agents (chat) |
+| Frontend | Vite + React + TypeScript |
+
+Full diagram: [docs/architecture.md](docs/architecture.md)
+
+---
+
+## 📖 Documentation
+
+| Doc | Link |
+|----|------|
+| API Spec (OpenAPI) | [docs/swagger.yaml](docs/swagger.yaml) |
+| Postman Collection | [docs/mediagent-postman-collection.json](docs/mediagent-postman-collection.json) |
+| Postman Environment | [docs/mediagent-environment.json](docs/mediagent-environment.json) |
+| Architecture | [docs/architecture.md](docs/architecture.md) |
+| PRD | [docs/PRD.md](docs/PRD.md) |
+| Android Guidelines | [docs/android_guidelines.md](docs/android_guidelines.md) |
+
+---
+
+## 🐛 Common Issues
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `PythonPipBuilder:Validation - Binary validation failed` | `python` on PATH is not 3.12 | Activate `.venv` before `sam build` |
+| `No module named '_bootstrap'` | `_bootstrap.py` not found via `/var/task/` | Fixed — `backend/_bootstrap.py` exists now |
+| `No module named 'insight_service'` | Bare import in Lambda app.py | Fixed — now uses `lambdas.insights_engine.insight_service` |
+| `403 Forbidden` | Wrong or missing API key | Run `aws apigateway get-api-keys --include-values` and update `.env` |
+| `502 Bad Gateway` | Lambda import error at cold start | Check CloudWatch logs; run `py -3.12 test_local.py imports` first |
