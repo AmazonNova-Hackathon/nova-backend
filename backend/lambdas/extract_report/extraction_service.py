@@ -35,14 +35,25 @@ Rules:
 - If date is not visible, use null.
 """
 
-def generate_upload_url(family_id: str, member_id: str = None, report_type: str = "lab_report") -> PreSignedUrlResponse:
+def generate_upload_url(family_id: str, member_id: str = None, report_type: str = "lab_report", content_type: str = "image/jpeg") -> PreSignedUrlResponse:
     report_id = str(uuid.uuid4())
     member_path = member_id if member_id else "detect"
     
-    # Pre-Signed URL path should match: family_id/member_path/report_id.jpg
-    s3_key = f"{family_id}/{member_path}/report-{report_id}.jpg"
+    # Map content type to format/extension
+    content_type_map = {
+        "image/png": ("png", "png"),
+        "image/jpeg": ("jpeg", "jpg"),
+        "image/jpg": ("jpeg", "jpg"),
+        "image/webp": ("webp", "webp"),
+        "application/pdf": ("pdf", "pdf")
+    }
     
-    url = s3_repo.get_presigned_url(s3_key)
+    fmt, ext = content_type_map.get(content_type, ("jpeg", "jpg"))
+    
+    # Pre-Signed URL path should match: family_id/member_path/report_id.ext
+    s3_key = f"{family_id}/{member_path}/report-{report_id}.{ext}"
+    
+    url = s3_repo.get_presigned_url(s3_key, content_type=content_type)
     
     # Store initial status skeleton
     dynamo_repo.put_report_and_observations(
@@ -72,19 +83,35 @@ def process_s3_upload(bucket: str, key: str) -> None:
     member_id = parts[1]
     
     try:
-        report_id = parts[2].replace('report-', '').replace('.jpg', '')
+        filename = parts[2]
+        # remove 'report-' and everything after the last dot
+        report_id = filename.replace('report-', '')
+        if '.' in report_id:
+            report_id = report_id.rsplit('.', 1)[0]
     except Exception:
         report_id = str(uuid.uuid4())
         
     # Update status to processing
     dynamo_repo.update_report_status(family_id, member_id, "UNKNOWN", report_id, status="processing")
     
+    # Determine format from extension
+    ext = key.split('.')[-1].lower() if '.' in key else "jpg"
+    format_map = {
+        "png": "png",
+        "jpg": "jpeg",
+        "jpeg": "jpeg",
+        "webp": "webp",
+        "pdf": "pdf"
+    }
+    fmt = format_map.get(ext, "jpeg")
+    
     image_bytes = s3_repo.get_image_bytes(key)
-    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+    # Note: Bedrock Nova supports document block for PDF and image block for images
     
     try:
-        extracted_json = _invoke_nova_extraction(image_base64)
+        extracted_json = _invoke_nova_extraction(image_bytes, ext=ext, fmt=fmt)
     except Exception as e:
+        logger.exception(f"Extraction failed for {key}")
         dynamo_repo.update_report_status(family_id, member_id, "UNKNOWN", report_id, status="failed", updates={"error": str(e)})
         return
         
@@ -136,18 +163,32 @@ def process_s3_upload(bucket: str, key: str) -> None:
     dynamo_repo.put_report_and_observations(report, observations)
 
 
-def _invoke_nova_extraction(image_base64: str) -> dict:
+def _invoke_nova_extraction(raw_bytes: bytes, ext: str, fmt: str) -> dict:
+    data_base64 = base64.b64encode(raw_bytes).decode('utf-8')
+    
+    content_block = {}
+    if ext == 'pdf':
+        content_block = {
+            "document": {
+                "format": "pdf",
+                "name": "MedicalReport",
+                "source": {"bytes": data_base64}
+            }
+        }
+    else:
+        content_block = {
+            "image": {
+                "format": fmt,
+                "source": {"bytes": data_base64}
+            }
+        }
+
     payload = {
         "messages": [
             {
                 "role": "user",
                 "content": [
-                    {
-                        "image": {
-                            "format": "jpeg",
-                            "source": {"bytes": image_base64}
-                        }
-                    },
+                    content_block,
                     {"text": EXTRACTION_PROMPT}
                 ]
             }

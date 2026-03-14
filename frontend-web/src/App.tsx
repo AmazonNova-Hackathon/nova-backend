@@ -76,26 +76,74 @@ const InsightCard = ({ insight }: { insight: Insight }) => (
   </div>
 );
 
-const ReportCard = ({ report }: { report: Report }) => (
-  <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'hsla(210, 100%, 100%, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-      </div>
-      <div>
-        <div style={{ fontWeight: 600, marginBottom: '0.2rem' }}>{report.title}</div>
-        <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{report.date}</div>
-      </div>
-    </div>
-    <div style={{ padding: '0.4rem 0.875rem', borderRadius: '10px', fontSize: '0.7rem', background: 'hsla(175, 100%, 45%, 0.08)', color: 'var(--chetana-teal)', fontWeight: 700, letterSpacing: '0.06em', flexShrink: 0 }}>
-      {report.status.toUpperCase()}
-    </div>
-  </div>
-);
+const ReportCard = ({ report, onRefresh }: { report: Report; onRefresh: () => void }) => {
+  const { appSession, selectedMember, setError } = (window as any).appGlobals;
+  
+  const handleView = async () => {
+    try {
+      const url = await api.getReportDownloadUrl(appSession.familyId, selectedMember.id, report.reportId);
+      window.open(url, '_blank');
+    } catch { setError('Could not view report.'); }
+  };
 
-const VoiceModal = ({ isOpen, onClose, memberId }: { isOpen: boolean; onClose: () => void; memberId: string }) => {
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this report? This will also remove its extracted observations.')) return;
+    try {
+      await api.deleteReport(appSession.familyId, selectedMember.id, report.reportId);
+      onRefresh();
+    } catch { setError('Could not delete report.'); }
+  };
+
+  return (
+    <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'hsla(210, 100%, 100%, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {report.status === 'Processing' ? (
+            <div className="status-spinner" />
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+          )}
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: '0.2rem' }}>{report.title}</div>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <span>{report.date || 'Pending Processing'}</span>
+            {report.status === 'Analyzed' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                <span style={{ width: '3px', height: '3px', borderRadius: '50%', background: 'var(--text-muted)' }} />
+                <span>{report.totalTests} Tests</span>
+                {report.abnormalCount! > 0 && (
+                  <span style={{ color: 'var(--rose-alert)', fontWeight: 600 }}>· {report.abnormalCount} Abnormal</span>
+                )}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className={`status-badge ${report.status.toLowerCase()}`}>
+          {report.status.toUpperCase()}
+        </div>
+        {report.status === 'Analyzed' && (
+          <button onClick={handleView} className="icon-btn" title="View Original">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+          </button>
+        )}
+        <button onClick={handleDelete} className="icon-btn delete" title="Delete">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const VoiceModal = ({ isOpen, onClose, familyId, memberId }: { isOpen: boolean; onClose: () => void; familyId: string; memberId: string }) => {
   const [message, setMessage] = useState('');
   const [chatLog, setChatLog] = useState<{ role: string; content: string }[]>([]);
+  const [sessionId, setSessionId] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
   const handleSend = async () => {
@@ -105,8 +153,9 @@ const VoiceModal = ({ isOpen, onClose, memberId }: { isOpen: boolean; onClose: (
     setMessage('');
     setIsTyping(true);
     try {
-      const response = await api.chat(memberId, message, chatLog);
-      setChatLog(prev => [...prev, { role: 'assistant', content: response.message || "I'm processing your request." }]);
+      const response = await api.chat(familyId, memberId, message, sessionId);
+      setSessionId(response.sessionId);
+      setChatLog(prev => [...prev, { role: 'assistant', content: response.reply || "I'm processing your request." }]);
     } catch {
       setChatLog(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting right now." }]);
     } finally {
@@ -171,6 +220,9 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
+  // Expose globals for sub-components without heavy prop drilling
+  (window as any).appGlobals = { appSession, selectedMember, setError };
+
   // Apply theme on mount + changes
   useEffect(() => { applyTheme(theme); }, [theme]);
 
@@ -191,14 +243,31 @@ function App() {
     }
   }, []);
 
-  // Fetch data whenever selected member changes
+  // Fetch data whenever selected member changes + setup polling
   useEffect(() => {
-    if (!selectedMember || !appSession) return;
+    if (!appSession || !selectedMember) return;
     const { familyId } = appSession;
+    
+    // Initial fetch
+    api.getReports(familyId, selectedMember.id).then(setReports).catch(() => setError('Reports sync failed.'));
     api.getObservations(familyId, selectedMember.id).then(setObservations).catch(() => setError('Observations sync failed.'));
     api.getInsights(familyId, selectedMember.id).then(setInsights).catch(() => setError('Insights sync failed.'));
-    api.getReports(familyId, selectedMember.id).then(setReports).catch(() => setError('Reports sync failed.'));
-  }, [selectedMember, appSession]);
+
+    // Poll if there's a processing report
+    const hasProcessingReports = reports.some(r => r.status === 'Processing');
+    let interval: any;
+
+    if (hasProcessingReports) {
+      interval = setInterval(() => {
+        api.getReports(familyId, selectedMember.id).then(setReports).catch(() => setError('Reports sync failed.'));
+        api.getInsights(familyId, selectedMember.id).then(setInsights).catch(() => setError('Insights sync failed.'));
+      }, 5000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [appSession, selectedMember, reports.some(r => r.status === 'Processing')]);
 
   const handleEnterApp = () => {
     const s = sessionHelper.get();
@@ -230,8 +299,8 @@ function App() {
     setIsUploading(true);
     try {
       await api.uploadReport(appSession.familyId, selectedMember.id, file);
-      const { familyId } = appSession;
-      api.getReports(familyId, selectedMember.id).then(setReports);
+      // After upload, immediately fetch reports to show the new one, likely in 'Processing' status
+      api.getReports(appSession.familyId, selectedMember.id).then(setReports);
     } catch { setError('Report upload failed.'); }
     finally { setIsUploading(false); }
   };
@@ -387,14 +456,19 @@ function App() {
               </label>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-              {reports.map(r => <ReportCard key={r.reportId} report={r} />)}
+              {reports.map(r => <ReportCard key={r.reportId} report={r} onRefresh={() => api.getReports(appSession.familyId, selectedMember!.id).then(setReports)} />)}
               {reports.length === 0 && <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', gridColumn: '1 / -1' }}>No reports uploaded yet. Upload a PDF lab result to get started.</div>}
             </div>
           </section>
         </div>
       </main>
 
-      <VoiceModal isOpen={isVoiceOpen} onClose={() => setIsVoiceOpen(false)} memberId={selectedMember?.id || ''} />
+      <VoiceModal 
+        isOpen={isVoiceOpen} 
+        onClose={() => setIsVoiceOpen(false)} 
+        familyId={appSession.familyId}
+        memberId={selectedMember?.id || ''} 
+      />
     </div>
   );
 }

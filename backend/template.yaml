@@ -181,26 +181,44 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /reports/upload-url
+            Path: /families/{familyId}/members/{memberId}/reports/upload-url
             Method: get
         GetReportsApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /reports
+            Path: /families/{familyId}/members/{memberId}/reports
             Method: get
         GetObservationsApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /observations
+            Path: /families/{familyId}/members/{memberId}/observations
             Method: get
         GetReportStatusApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /reports/{reportId}/status
+            Path: /families/{familyId}/members/{memberId}/reports/{reportId}/status
             Method: get
+        ManualUploadApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families/{familyId}/members/{memberId}/reports/upload
+            Method: post
+        DownloadReportApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families/{familyId}/members/{memberId}/reports/{reportId}/download
+            Method: get
+        DeleteReportApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families/{familyId}/members/{memberId}/reports/{reportId}
+            Method: delete
 
   # Explicit S3 invoke permission — must exist BEFORE MediAgentReportsBucket
   # so that S3 can successfully configure the notification during bucket creation.
@@ -242,7 +260,7 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /chat
+            Path: /families/{familyId}/members/{memberId}/chat
             Method: post
 
   # ---------------------------------------------------------------------------
@@ -276,31 +294,31 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /insights
+            Path: /families/{familyId}/members/{memberId}/insights
             Method: get
         MarkInsightReadApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /insights/{insightId}
+            Path: /families/{familyId}/members/{memberId}/insights/{insightId}
             Method: patch
         GenerateInsightsApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /insights/generate
+            Path: /families/{familyId}/members/{memberId}/insights/generate
             Method: post
         GetFollowupsApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /followups
+            Path: /families/{familyId}/members/{memberId}/followups
             Method: get
         UpdateFollowupApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
-            Path: /followups/{followUpId}
+            Path: /families/{familyId}/members/{memberId}/followups/{followUpId}
             Method: patch
 
   # ---------------------------------------------------------------------------

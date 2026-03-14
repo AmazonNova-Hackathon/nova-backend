@@ -1,8 +1,8 @@
 openapi: 3.0.0
 info:
   title: MediAgent API
-  description: Hackathon backend for Amazon Nova lab data extraction and agentic chat.
-  version: 1.1.0
+  description: Hackathon backend for Amazon Nova lab data extraction and agentic chat. Features strictly hierarchical REST paths and multi-turn AI context sessions.
+  version: 2.1.0
 servers:
   - url: https://lyszq8emp5.execute-api.us-east-1.amazonaws.com/prod
     description: Production API Gateway
@@ -12,171 +12,298 @@ components:
       type: apiKey
       in: header
       name: x-api-key
+  schemas:
+    Meta:
+      type: object
+      properties:
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        updatedBy: { type: string }
+        version: { type: integer }
+        isDeleted: { type: boolean }
 paths:
-  /reports/upload-url:
-    get:
-      summary: Retrieve a pre-signed S3 URL for uploading large report images directly.
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - in: query
-          name: patientId
-          required: true
-          schema:
-            type: string
-          description: The ID of the patient.
-      responses:
-        '200':
-          description: A payload containing the pre-signed S3 `url` and the associated `s3Key`.
-  /reports/upload:
-    post:
-      summary: Trigger Amazon Nova extraction on the previously uploaded S3 image.
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - patientId
-                - reportType
-                - s3Key
-              properties:
-                patientId:
-                  type: string
-                  example: "patient-demo-001"
-                reportType:
-                  type: string
-                  example: "lab_report"
-                s3Key:
-                  type: string
-                  description: "The S3 key target that the mobile app uploaded the binary to."
-      responses:
-        '200':
-          description: Successfully parsed and stored the report.
-  /reports:
-    get:
-      summary: Retrieve all reports for a specific patient
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - in: query
-          name: patientId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: A list of FHIR DiagnosticReports.
-  /observations:
-    get:
-      summary: Retrieve all observations for a specific patient for UI Graph plotting.
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - in: query
-          name: patientId
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: A list of FHIR Observations containing `value`, `date`, `normalLow`, `normalHigh` (for rendering bands), and `isAbnormal` boolean alerts.
-  /chat:
-    post:
-      summary: Chat with the Bedrock Agent
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - patientId
-                - message
-                - conversationHistory
-              properties:
-                patientId:
-                  type: string
-                  example: "patient-demo-001"
-                message:
-                  type: string
-                  example: "What is my glucose trend?"
-                conversationHistory:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      role:
-                        type: string
-                      content:
-                        type: string
-      responses:
-        '200':
-          description: Response from the LLM agent, containing `referencedReports` or `referencedObservations` arrays for UI Citations.
-
   /families:
+    get:
+      summary: List all families.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of families.
     post:
       summary: Create a new family.
       security:
         - ApiKeyAuth: []
       requestBody:
-        required: false
         content:
           application/json:
             schema:
               type: object
               properties:
-                name:
-                  type: string
-                  example: "The Miller Family"
+                name: { type: string }
       responses:
         '201':
-          description: Family created successfully. Returns the `familyId`.
+          description: Family created.
 
   /families/{familyId}/members:
+    get:
+      summary: List members of a family.
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of members.
     post:
-      summary: Register a new member to a family.
+      summary: Add a member to a family.
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                age: { type: integer }
+                gender: { type: string }
+                relationship: { type: string }
+      responses:
+        '201':
+          description: Member added.
+
+  /families/{familyId}/members/{memberId}/reports/upload-url:
+    get:
+      summary: Retrieve a pre-signed S3 URL for uploading report images or documents.
+      description: Supports image/jpeg, image/png, image/webp, and application/pdf.
       security:
         - ApiKeyAuth: []
       parameters:
         - in: path
           name: familyId
           required: true
-          schema:
-            type: string
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: contentType
+          required: false
+          schema: { type: string, default: "image/jpeg" }
+      responses:
+        '200':
+          description: Presigned S3 URL, reportId, and s3Key.
+
+  /families/{familyId}/members/{memberId}/reports/upload:
+    post:
+      summary: Trigger manual processing of an uploaded file.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - name
+              required: [s3Key]
               properties:
-                name:
-                  type: string
-                  example: "Alice Miller"
-                id:
-                  type: string
-                  description: Optional ID (UUID).
+                s3Key: { type: string }
+                reportType: { type: string, default: "lab_report" }
       responses:
-        '201':
-          description: Member added successfully. Returns `memberId`.
+        '200':
+          description: Processing started.
+
+  /families/{familyId}/members/{memberId}/reports:
     get:
-      summary: List all members of a family.
+      summary: Retrieve all reports for a specific member.
       security:
         - ApiKeyAuth: []
       parameters:
         - in: path
           name: familyId
           required: true
-          schema:
-            type: string
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
       responses:
         '200':
-          description: A list of family members.
+          description: List of reports.
+
+  /families/{familyId}/members/{memberId}/reports/{reportId}/status:
+    get:
+      summary: Check extraction status and summary.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: reportId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Report status info and extracted observations.
+
+  /families/{familyId}/members/{memberId}/reports/{reportId}/download:
+    get:
+      summary: Get a pre-signed URL to download/view the original file.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: reportId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Download URL.
+
+  /families/{familyId}/members/{memberId}/reports/{reportId}:
+    delete:
+      summary: Soft-delete a report and all its associated observations.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: reportId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted successfully.
+
+  /families/{familyId}/members/{memberId}/observations:
+    get:
+      summary: Retrieve all observations for a specific member across all reports.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of observations.
+
+  /families/{familyId}/members/{memberId}/insights:
+    get:
+      summary: Retrieve insights for a specific member.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of insights.
+
+  /families/{familyId}/members/{memberId}/insights/generate:
+    post:
+      summary: On-demand generation of insights using Amazon Nova.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Insights generated.
+
+  /families/{familyId}/members/{memberId}/chat:
+    post:
+      summary: Chat with the Bedrock Agent for a specific member.
+      description: Maintains multi-turn context using the sessionId field.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                sessionId: { type: string, description: "Pass a previously received sessionId to maintain conversation context." }
+      responses:
+        '200':
+          description: AI response and persistent sessionId.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply: { type: string }
+                  sessionId: { type: string }

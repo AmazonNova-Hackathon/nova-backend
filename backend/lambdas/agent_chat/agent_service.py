@@ -73,6 +73,7 @@ def process_chat(raw_payload: dict) -> ChatResponse:
                 # and can be forwarded to action group Lambda functions.
                 "sessionAttributes": {
                     "familyId": req.familyId,
+                    "memberId": req.memberId,
                 }
             },
         )

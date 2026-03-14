@@ -18,8 +18,15 @@ def lambda_handler(event: dict, context: LambdaContext):
     logger.info("Received request", extra={"method": method, "path": path})
 
     try:
-        if method == "POST" and path == "/chat":
+        path_parameters = event.get('pathParameters') or {}
+        family_id = path_parameters.get('familyId')
+        member_id = path_parameters.get('memberId')
+
+        if method == "POST" and path.endswith("/chat"):
             body = json.loads(event.get("body", "{}"))
+            # Ensure context from path is used
+            body['familyId'] = family_id
+            body['memberId'] = member_id
             response = process_chat(body)
             return _build_response(200, response.model_dump())
         else:

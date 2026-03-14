@@ -1,9 +1,18 @@
 from typing import Literal, Optional, List
 from pydantic import BaseModel
 
+class MetaData(BaseModel):
+    createdAt: str
+    updatedAt: str
+    createdBy: str
+    updatedBy: str
+    version: int = 1
+    isDeleted: bool = False
+
 class Family(BaseModel):
     id: str  # familyId
     name: Optional[str] = None
+    meta: Optional[MetaData] = None
 
 class Member(BaseModel):
     id: str  # memberId
@@ -12,6 +21,7 @@ class Member(BaseModel):
     age: Optional[int] = None
     gender: Optional[str] = None
     relationship: str  # e.g., "Self", "Spouse", "Mother", "Language"
+    meta: Optional[MetaData] = None
 
 class InsightCard(BaseModel):
     id: str  # insightId
@@ -27,6 +37,7 @@ class InsightCard(BaseModel):
     read: bool = False
     language: str = "en"
     disclaimer: str
+    meta: Optional[MetaData] = None
 
 class FollowUp(BaseModel):
     id: str  # followUpId
@@ -38,6 +49,7 @@ class FollowUp(BaseModel):
     basedOnObservations: List[str] = []
     status: Literal["pending", "accepted", "dismissed"]
     createdAt: str
+    meta: Optional[MetaData] = None
 
 class Observation(BaseModel):
     id: str  # UUID
@@ -52,6 +64,7 @@ class Observation(BaseModel):
     date: Optional[str] = None  # YYYY-MM-DD
     reportId: str
     memberId: str
+    meta: Optional[MetaData] = None
 
 class DiagnosticReport(BaseModel):
     reportId: str
@@ -64,3 +77,4 @@ class DiagnosticReport(BaseModel):
     abnormalCount: int = 0
     s3Key: Optional[str] = None
     status: str = "uploading"
+    meta: Optional[MetaData] = None

@@ -3,17 +3,21 @@ Lambda 5: Family Management
 Handler: app.lambda_handler
 
 Routes:
+  GET  /families
   POST /families
   POST /families/{familyId}/members
   GET  /families/{familyId}/members
+  DELETE /families/{familyId}/members/{memberId}
 """
 import _bootstrap  # noqa: F401
 
 import json
 import uuid
+import os
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 from pydantic import ValidationError
+from boto3.dynamodb.conditions import Key
 
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
@@ -45,8 +49,16 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
     path_params = event.get("pathParameters") or {}
 
     try:
+        # GET /families
+        if method == "GET" and path == "/families":
+            response = repo.table.scan(
+                FilterExpression=Key('sk').eq('META')
+            )
+            families = [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+            return _ok({"families": families})
+
         # POST /families
-        if method == "POST" and path == "/families":
+        elif method == "POST" and path == "/families":
             body = json.loads(event.get("body") or "{}")
             family_id = str(uuid.uuid4())
             family_name = body.get("name") or "My Family"
@@ -77,10 +89,18 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             return _ok(member.model_dump())
 
         # GET /families/{familyId}/members
-        elif method == "GET" and path_params.get("familyId") and "members" in path:
+        elif method == "GET" and path_params.get("familyId") and "members" in path and not path_params.get("memberId"):
             family_id = path_params["familyId"]
             members = repo.get_family_members(family_id)
             return _ok({"members": members, "count": len(members)})
+
+        # DELETE /families/{familyId}/members/{memberId}
+        elif method == "DELETE" and path_params.get("familyId") and path_params.get("memberId"):
+            family_id = path_params["familyId"]
+            member_id = path_params["memberId"]
+            sk = f"MEMBER#{member_id}"
+            repo.soft_delete_item(family_id, sk)
+            return _ok({"message": "Member deleted"})
 
         else:
             return _err(404, "NOT_FOUND", f"Route not found: {method} {path}")

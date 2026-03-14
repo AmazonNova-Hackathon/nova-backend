@@ -1,4 +1,5 @@
-import _bootstrap  # noqa: F401 — adds backend/ to sys.path in Lambda
+import _bootstrap  # noqa: F401
+import os
 import json
 import traceback
 import urllib.parse
@@ -7,7 +8,7 @@ from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from lambdas.extract_report.extraction_service import process_s3_upload, generate_upload_url
-from lambdas.extract_report.report_service import get_reports, get_observations, get_report_status
+from lambdas.extract_report.report_service import get_reports, get_observations, get_report_status, delete_report, get_report_download_url
 from lambdas.shared.models.responses import ErrorResponse
 
 logger = Logger(service="extract_report")
@@ -34,37 +35,34 @@ def lambda_handler(event: dict, context: LambdaContext):
     logger.info("Received API request", extra={"method": method, "path": path})
 
     try:
-        # GET /reports/upload-url
-        if method == 'GET' and path == '/reports/upload-url':
-            params = event.get('queryStringParameters') or {}
-            family_id = params.get('familyId')
-            member_id = params.get('memberId')
+        family_id = path_parameters.get('familyId')
+        member_id = path_parameters.get('memberId')
+        report_id = path_parameters.get('reportId')
+        params = event.get('queryStringParameters') or {}
+
+        # GET /families/{familyId}/members/{memberId}/reports/upload-url
+        if method == 'GET' and '/reports/upload-url' in path:
             report_type = params.get('reportType', 'lab_report')
+            content_type = params.get('contentType', 'image/jpeg')
             
-            if not family_id:
-                return _build_error(400, "VALIDATION_ERROR", "familyId query parameter is required")
+            if not family_id or not member_id:
+                return _build_error(400, "VALIDATION_ERROR", "familyId and memberId are required")
                 
-            response = generate_upload_url(family_id, member_id, report_type)
+            response = generate_upload_url(family_id, member_id, report_type, content_type)
             return _build_response(200, response.model_dump())
             
-        # GET /reports
-        elif method == 'GET' and path == '/reports':
-            params = event.get('queryStringParameters') or {}
-            family_id = params.get('familyId')
-            member_id = params.get('memberId') # Optional filter
-            if not family_id:
-                return _build_error(400, "VALIDATION_ERROR", "familyId query parameter is required")
+        # GET /families/{familyId}/members/{memberId}/reports
+        elif method == 'GET' and path.endswith('/reports'):
+            if not family_id or not member_id:
+                return _build_error(400, "VALIDATION_ERROR", "familyId and memberId are required")
             
             response = get_reports(family_id, member_id)
             return _build_response(200, response)
             
-        # GET /observations
-        elif method == 'GET' and path == '/observations':
-            params = event.get('queryStringParameters') or {}
-            family_id = params.get('familyId')
-            member_id = params.get('memberId') # Optional filter
-            if not family_id:
-                return _build_error(400, "VALIDATION_ERROR", "familyId query parameter is required")
+        # GET /families/{familyId}/members/{memberId}/observations
+        elif method == 'GET' and path.endswith('/observations'):
+            if not family_id or not member_id:
+                return _build_error(400, "VALIDATION_ERROR", "familyId and memberId are required")
                 
             response = get_observations(
                 family_id=family_id,
@@ -75,21 +73,48 @@ def lambda_handler(event: dict, context: LambdaContext):
             )
             return _build_response(200, response)
             
-        # GET /reports/{reportId}/status
-        elif method == 'GET' and path and path.startswith('/reports/') and path.endswith('/status'):
-            report_id = path_parameters.get('reportId')
-            params = event.get('queryStringParameters') or {}
-            family_id = params.get('familyId')
-            member_id = params.get('memberId')
-            
+        # GET /families/{familyId}/members/{memberId}/reports/{reportId}/status
+        elif method == 'GET' and path.endswith('/status'):
             if not family_id or not member_id or not report_id:
-                return _build_error(400, "VALIDATION_ERROR", "familyId and memberId are required to check status")
+                return _build_error(400, "VALIDATION_ERROR", "familyId, memberId, and reportId are required")
                 
             response = get_report_status(family_id, member_id, report_id)
             if not response:
                 return _build_error(404, "NOT_FOUND", "Report not found")
                 
             return _build_response(200, response)
+            
+        # GET /families/{familyId}/members/{memberId}/reports/{reportId}/download
+        elif method == 'GET' and path.endswith('/download'):
+            if not family_id or not member_id or not report_id:
+                return _build_error(400, "VALIDATION_ERROR", "familyId, memberId, and reportId are required")
+                
+            url = get_report_download_url(family_id, member_id, report_id)
+            if not url:
+                return _build_error(404, "NOT_FOUND", "Report not found")
+            return _build_response(200, {"url": url})
+            
+        # DELETE /families/{familyId}/members/{memberId}/reports/{reportId}
+        elif method == 'DELETE' and report_id:
+            if not family_id or not member_id:
+                return _build_error(400, "VALIDATION_ERROR", "familyId and memberId are required")
+                
+            success = delete_report(family_id, member_id, report_id)
+            if not success:
+                return _build_error(404, "NOT_FOUND", "Report not found")
+            return _build_response(200, {"message": "Report deleted"})
+
+        # POST /families/{familyId}/members/{memberId}/reports/upload (Manual trigger)
+        elif method == 'POST' and path.endswith('/reports/upload'):
+            body = json.loads(event.get('body') or '{}')
+            s3_key = body.get('s3Key')
+            
+            if not s3_key or not family_id or not member_id:
+                return _build_error(400, "VALIDATION_ERROR", "s3Key, familyId, and memberId are required")
+            
+            # This triggers the processing manually
+            process_s3_upload(os.environ.get('S3_BUCKET_NAME'), s3_key)
+            return _build_response(200, {"message": "Processing started", "s3Key": s3_key})
 
         else:
             return _build_error(404, "NOT_FOUND", "Route not found")

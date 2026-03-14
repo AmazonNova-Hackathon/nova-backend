@@ -15,10 +15,10 @@ class S3Repository:
         )
         return f"s3://{self.bucket}/{s3_key}"
 
-    def get_presigned_url(self, s3_key: str, expires_in: int = 3600) -> str:
+    def get_presigned_url(self, s3_key: str, content_type: str = "image/jpeg", expires_in: int = 3600) -> str:
         return self.s3.generate_presigned_url(
-            'put_object', # Change from 'get_object' to 'put_object' for upload!
-            Params={'Bucket': self.bucket, 'Key': s3_key, 'ContentType': 'image/jpeg'},
+            'put_object',
+            Params={'Bucket': self.bucket, 'Key': s3_key, 'ContentType': content_type},
             ExpiresIn=expires_in
         )
 

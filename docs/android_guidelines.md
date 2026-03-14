@@ -1,73 +1,74 @@
 # Android Integration Guide: MediAgent APIs
 
-This document outlines how the Android client should interact with the MediAgent backend APIs to provide a rich, interactive, data-driven user experience using Amazon Bedrock and DynamoDB FHIR schemas.
+This document outlines how the Android client should interact with the MediAgent backend APIs to provide a rich, interactive, data-driven user experience using Amazon Bedrock and DynamoDB.
 
 ---
 
-## 🚀 1. Image Upload & Processing State
+## 🚀 1. Image & Document Upload
 
-Do **not** upload Base64 encoded images directly. Instead, stream binary data to S3 using Pre-Signed URLs so that you can attach progress listeners to your HTTP client.
+Do **not** upload Base64 encoded data directly to the API. Instead, use the Pre-Signed URL pattern which allows direct binary streaming to S3.
+
+### Supported Formats
+- **Images**: `image/jpeg`, `image/png`, `image/webp` (standard for Android `Bitmap` or camera intent).
+- **Documents**: `application/pdf` (standard for medical records shared via files).
 
 ### Flow:
-1. **Request URL**: `GET /reports/upload-url?patientId={id}`
-2. **Stream Binary**: `PUT` the raw Kotlin `ByteArray` directly to the `url` string provided in Step 1.
-   - *UI Suggestion*: Attach a standard `ProgressBar` listener to track the upload.
-3. **Trigger Processing**: `POST /reports/upload` with the `s3Key` from Step 1.
-   - **Crucial**: This is a synchronous connection! The request will hold open for **~5 to 15 seconds** while Amazon Nova Multimodal processes the image text.
-   - *UI Suggestion*: Replace the upload progress bar with an indeterminate spinner reading: `"Analyzing Report with Amazon Nova..."`.
-   - Once you receive the `200 OK`, the report is strictly persisted and immediately available.
+1.  **Request URL**: `GET /families/{fid}/members/{mid}/reports/upload-url?contentType={mimeType}`
+    -   Example mimeType: `image/png` or `application/pdf`.
+2.  **Stream Binary**: Perform a `PUT` request with the raw data to the `url` received in Step 1.
+    -   *Crucial*: Set the `Content-Type` header of your `PUT` request to match the `mimeType` sent in Step 1.
+3.  **Trigger Processing**: `POST /families/{fid}/members/{mid}/reports/upload` with the `s3Key`.
+    -   The system will automatically detect the format based on the file extension in the key.
+    -   **Processing Time**: This takes **10-20 seconds**. Use an indeterminate progress spinner with text like: *"Decoding Lab Results with AI..."*
 
 ---
 
-## 📈 2. Generating Graphs & Tables (No AI Chat Needed)
+## 📉 2. Visualization & Health Trends
 
-Do not rely on the AI agent to output raw data for plotting. Instead, utilize the structured FHIR APIs to natively render beautiful graphs in Android using libraries like MPAndroidChart.
+Utilize structured FHIR-like observations to render native Android charts (e.g., MPAndroidChart).
 
-### API: `GET /observations?patientId={id}`
-This returns a timeline array of every individual lab parameter ever extracted across all reports for the given patient.
+### API: `GET /families/{fid}/members/{mid}/observations`
+This returns a timeline of all lab parameters.
 
-### Key Data Points for Rendering:
-- **`date`**: Use for your X-Axis (Timeline).
-- **`value`**: Use for your Y-Axis plotting point.
-- **Reference Bands**: Draw green shaded background bands on your graph using the `normalLow` and `normalHigh` numeric boundaries.
-
----
-
-## 🚨 3. Alerting & Abnormal Highlighting
-
-The backend extraction service actively determines clinical abnormality at the time of ingestion based on the printed reference ranges. 
-
-### Implementation:
-Every FHIR object returned from `/observations` and the initial `/reports/upload` response contains an `isAbnormal` boolean.
-- *UI Suggestion*: If `isAbnormal == true`, unconditionally tint that row of the Table View or data point on the graph **Red**.
-- *UI Suggestion*: You can also leverage the `interpretation` string enum (`"H"`, `"HH"`, `"L"`, `"LL"`, `"N"`) to render specific iconography (like an Up or Down arrow) next to the value.
+### Graph Mapping:
+- **X-Axis**: Use the ISO 8601 `date` string.
+- **Y-Axis**: Use the `value` number.
+- **Reference Ranges**: Draw translucent background bands using `normalLow` and `normalHigh`.
+- **Alerting**: If `isAbnormal` is `true`, color the data point **Red**.
 
 ---
 
-## 📎 4. Sourcing & Citations
+## 🤖 3. Conversational AI (Multi-turn Chat)
 
-Medical professionals require trust. Whenever data is visually rendered, the user must be able to view the raw truth.
+The Chat API supports multi-turn context using a `sessionId`.
 
-- **From Graphs / Tables**: Every `Observation` dict contains a `reportId`. You can lookup the parent `DiagnosticReport` (via the `GET /reports` API) to grab the `s3Key`.
-- **From Agent Chat**: The response from `POST /chat` includes two arrays: `referencedReports` and `referencedObservations`. 
-   - *UI Suggestion*: Render these as clickable **Citation Chips** below the Chat Bubble. If tapped, resolve the `reportId`, download the raw image byte sequence from S3 using the `/upload-url` logic in reverse, and display the original source document inside a modal Viewer!
+### API: `POST /families/{fid}/members/{mid}/chat`
+- **Request**: `{"message": "What do these results mean?", "sessionId": ""}`
+- **Response**: `{"reply": "...", "sessionId": "abc-123"}`
+
+### Implementation Guide:
+1.  **Start State**: Initialize a `currentSessionId` variable as an empty string.
+2.  **First Turn**: Send the message with an empty `sessionId`.
+3.  **Persist Context**: On every response, update `currentSessionId` with the value returned from the backend.
+4.  **Subsequent Turns**: Pass the stored `sessionId` in the payload. This allows the AI (Bedrock Agent) to remember the patient's history and previous questions.
 
 ---
 
-## 👨‍👩‍👧‍👦 5. Family Hub & Smart Onboarding
+## 🧹 4. Data Hygiene (Soft Delete)
 
-The backend is designed for a low-friction "Family First" onboarding flow. You can either register a family explicitly or let the system bootstrap it from the first report.
+The backend implements a soft-delete pattern to prevent accidental data loss.
 
-### Option A: Manual Setup (Registration Screen)
-1. **Create Family**: `POST /families` (Optionally payload: `{"name": "The Smiths"}`). Store the `familyId`.
-2. **Add Member**: `POST /families/{familyId}/members` (Payload: `{"name": "Alice"}`). Store the `memberId`.
+### API: `DELETE /families/{fid}/members/{mid}/reports/{reportId}`
+-   This marks the report and its child observations as `isDeleted: true` in the `meta` block.
+-   The GET APIs automatically filter out deleted items.
 
-### Option B: Smart Onboarding (Frictionless)
-1. **Upload Report**: Use `memberId = "detect"` in your `POST /reports/upload` call.
-2. **Behavior**: 
-   - If the report belongs to a new person, the backend **automatically creates** a new member using the patient name extracted from the lab report.
-   - The response will include the new `memberId`.
-   - *UI Suggestion*: This is perfect for the "First Lab Report Scan" where the user hasn't set up a profile yet.
+---
 
-### Dashboard: `GET /families/{familyId}/members`
-Use this to render the "Switch Profile" or "Family Dashboard" screen, listing all members and their basic metadata.
+## 👨‍👩‍👧‍👦 5. Hierarchical Navigation
+
+Ensure your Android navigation (Fragments/Compose) follows the breadcrumb model of the API:
+-   **Root**: List Families (`GET /families`)
+-   **Level 1**: Select Member (`GET /families/{fid}/members`)
+-   **Level 2**: Dashboard (Observations + Reports + Insights)
+
+This structure ensures that the `familyId` and `memberId` are always available for child API calls.
