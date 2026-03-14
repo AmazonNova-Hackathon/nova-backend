@@ -2,29 +2,57 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   MediAgent Backend (Amazon Nova Hackathon)
-  SAM Template for API Gateway, Bedrock Invocation, and DynamoDB storage.
+  SAM Template for API Gateway, Lambda, Bedrock, and DynamoDB.
+
+# =============================================================================
+# DESIGN NOTES
+# =============================================================================
+# 1. API KEY / USAGE PLAN: Always use SAM-native "CreateUsagePlan: PER_API".
+#    Never add explicit AWS::ApiGateway::ApiKey / UsagePlan / UsagePlanKey
+#    resources — they create a circular dependency between the stage, deployment,
+#    Lambda permissions, and the usage plan.
+
+# 2. S3 <-> LAMBDA CIRCULAR DEPENDENCY: ExtractReportFunction uses an explicit
+#    IAM Statement with !Sub to build the bucket ARN as a plain string. This
+#    means CloudFormation sees *zero* resource dependency from Lambda -> Bucket.
+#    The S3 event (Bucket -> Lambda) is therefore the only edge, breaking the
+#    cycle. Never use S3CrudPolicy: !Ref <bucket> when that bucket also has an
+#    S3 event pointing to the same Lambda.
+
+# 3. SAM-GENERATED RESOURCE NAMES: Never reference SAM-internal names such as
+#    MediAgentApiProdStage in DependsOn — they do not exist in the SAM source
+#    template and CloudFormation will reject the template.
+
+# 4. Method: any IS NOT VALID in SAM API events. Use explicit HTTP verbs.
+# =============================================================================
 
 Globals:
   Function:
     Timeout: 30
     MemorySize: 512
     Runtime: python3.12
+    LoggingConfig:
+      LogFormat: JSON
     Environment:
       Variables:
         FHIR_TABLE_NAME: !Ref MediAgentFhirTable
-        S3_BUCKET_NAME: !Ref MediAgentReportsBucket
-        BEDROCK_REGION: us-east-1
-        NOVA_MODEL_ID: amazon.nova-2-lite-v1:0
+        # IMPORTANT: Use !Sub (string), NOT !Ref MediAgentReportsBucket.
+        # !Ref in Globals would create a CF dependency edge from ALL 8 Lambda
+        # functions to the bucket. Combined with the S3 event (bucket -> Lambda),
+        # this causes a circular dependency across every function in the stack.
+        S3_BUCKET_NAME: !Sub "mediagent-reports-${AWS::StackName}-${AWS::AccountId}"
+        BEDROCK_REGION: !Ref AWS::Region
+        NOVA_MODEL_ID: amazon.nova-lite-v1:0
         DEMO_PATIENT_ID: patient-demo-001
 
 Resources:
-  # ----------------------------------------------------------------------------
-  # DynamoDB Table
-  # ----------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB — primary FHIR + insights store
+  # ---------------------------------------------------------------------------
   MediAgentFhirTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: mediagent-fhir
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: pk
@@ -39,13 +67,27 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
-  # ----------------------------------------------------------------------------
-  # S3 Bucket for Uploads
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # S3 — medical reports bucket
+  #
+  # CIRCULAR DEPENDENCY FIX (AWS-recommended pattern):
+  #   The SAM "S3" event type puts "Bucket: !Ref" in Events, which creates a
+  #   CF resource dependency: Lambda -> Bucket. SAM then also generates a
+  #   NotificationConfiguration on the bucket: Bucket -> Lambda. Cycle.
+  #
+  #   Fix: Do NOT use the SAM S3 event type. Instead:
+  #     1. Grant S3 invoke permission via explicit AWS::Lambda::Permission
+  #        (ExtractReportFunctionS3Permission — defined BEFORE this bucket).
+  #     2. Put NotificationConfiguration directly on this bucket resource.
+  #     3. DependsOn the permission so ordering is: Lambda -> Permission -> Bucket.
+  #   ExtractReportFunction has zero !Ref/!GetAtt back to this bucket (uses !Sub)
+  #   so there is no reverse edge and therefore no cycle.
+  # ---------------------------------------------------------------------------
   MediAgentReportsBucket:
     Type: AWS::S3::Bucket
+    DependsOn: ExtractReportFunctionS3Permission
     Properties:
-      BucketName: !Sub mediagent-reports-${AWS::AccountId}
+      BucketName: !Sub "mediagent-reports-${AWS::StackName}-${AWS::AccountId}"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -58,35 +100,36 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
-            AllowedMethods: [PUT]
+            AllowedMethods: [PUT, GET, POST]
             AllowedOrigins: ['*']
             MaxAge: 300
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Function: !GetAtt ExtractReportFunction.Arn
 
-  # ----------------------------------------------------------------------------
-  # S3 Bucket for Guidelines (Knowledge Base)
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # S3 — Bedrock Knowledge Base source bucket
+  # ---------------------------------------------------------------------------
   MediAgentGuidelinesBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub mediagent-guidelines-${AWS::AccountId}
+      BucketName: !Sub "mediagent-guidelines-${AWS::StackName}-${AWS::AccountId}"
 
-  # ----------------------------------------------------------------------------
-  # S3 Bucket for Knowledge Base Multimodal Storage (Chunks)
-  # ----------------------------------------------------------------------------
   MediAgentGuidelinesChunksBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub mediagent-guidelines-chunks-${AWS::AccountId}
+      BucketName: !Sub "mediagent-chunks-${AWS::StackName}-${AWS::AccountId}"
 
-  # ----------------------------------------------------------------------------
-  # API Gateway
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # API Gateway REST API  (see design note #1 for UsagePlan approach)
+  # ---------------------------------------------------------------------------
   MediAgentApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
       Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
         AllowOrigin: "'*'"
         MaxAge: "'600'"
@@ -94,23 +137,42 @@ Resources:
         ApiKeyRequired: true
         UsagePlan:
           CreateUsagePlan: PER_API
-          Description: Usage plan for MediAgent hackathon demo
+          Description: !Sub "MediAgent usage plan — ${AWS::StackName}"
 
-  # ----------------------------------------------------------------------------
-  # Lambda 1: Extract Report
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Lambda 1: ExtractReportFunction
+  # Handles pre-signed URL generation, OCR, and FHIR conversion.
+  #
+  # NOTE: No S3 event in Events section — see MediAgentReportsBucket above for
+  # the circular-dep-safe NotificationConfiguration approach.
+  # ExtractReportFunction has NO !Ref or !GetAtt to MediAgentReportsBucket.
+  # All S3 access uses !Sub ARN strings so CF sees zero Lambda -> Bucket edges.
+  # ---------------------------------------------------------------------------
   ExtractReportFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/extract_report/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.extract_report.app.lambda_handler
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MediAgentFhirTable
-        - S3CrudPolicy:
-            BucketName: !Ref MediAgentReportsBucket
+        # Use !Sub (plain string ARN), NOT S3CrudPolicy: !Ref, to avoid creating
+        # a CloudFormation resource dependency from Lambda back to the bucket.
         - Statement:
-            - Effect: Allow
+            - Sid: S3ReportsBucketAccess
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:ListBucket
+                - s3:GetBucketLocation
+              Resource:
+                - !Sub "arn:aws:s3:::mediagent-reports-${AWS::StackName}-${AWS::AccountId}"
+                - !Sub "arn:aws:s3:::mediagent-reports-${AWS::StackName}-${AWS::AccountId}/*"
+        - Statement:
+            - Sid: BedrockInvokeAccess
+              Effect: Allow
               Action:
                 - bedrock:InvokeModel
               Resource: "*"
@@ -121,11 +183,6 @@ Resources:
             RestApiId: !Ref MediAgentApi
             Path: /reports/upload-url
             Method: get
-        S3UploadTrigger:
-          Type: S3
-          Properties:
-            Bucket: !Ref MediAgentReportsBucket
-            Events: s3:ObjectCreated:*
         GetReportsApi:
           Type: Api
           Properties:
@@ -144,52 +201,39 @@ Resources:
             RestApiId: !Ref MediAgentApi
             Path: /reports/{reportId}/status
             Method: get
-        # Family APIs
-        CreateFamilyApi:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MediAgentApi
-            Path: /family
-            Method: post
-        AddFamilyMemberApi:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MediAgentApi
-            Path: /family/members
-            Method: post
-        GetFamilyDashboardApi:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MediAgentApi
-            Path: /family/dashboard
-            Method: get
-        UpdateFamilyMemberApi:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MediAgentApi
-            Path: /family/members/{memberId}
-            Method: patch
 
-  # ----------------------------------------------------------------------------
-  # Lambda 2: Agent Chat
-  # ----------------------------------------------------------------------------
+  # Explicit S3 invoke permission — must exist BEFORE MediAgentReportsBucket
+  # so that S3 can successfully configure the notification during bucket creation.
+  ExtractReportFunctionS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ExtractReportFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:s3:::mediagent-reports-${AWS::StackName}-${AWS::AccountId}"
+
+  # ---------------------------------------------------------------------------
+  # Lambda 2: AgentChatFunction
+  # Orchestrates Bedrock Agent interactions.
+  # ---------------------------------------------------------------------------
   AgentChatFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/agent_chat/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.agent_chat.app.lambda_handler
       Timeout: 60
       MemorySize: 1024
       Environment:
         Variables:
-          # Injected manually after creating the Agent in the Bedrock Console
           AGENT_ID: "QKOQZAZT9C"
           AGENT_ALIAS_ID: "7MVGBJC3KY"
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
         - Statement:
-            - Effect: Allow
+            - Sid: BedrockInvokeAgentAccess
+              Effect: Allow
               Action:
                 - bedrock:InvokeAgent
               Resource: "*"
@@ -201,21 +245,23 @@ Resources:
             Path: /chat
             Method: post
 
-  # ----------------------------------------------------------------------------
-  # Lambda 3: Insights Engine
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Lambda 3: InsightsEngineFunction
+  # Proactive health monitoring — scheduled daily + API endpoints.
+  # ---------------------------------------------------------------------------
   InsightsEngineFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/insights_engine/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.insights_engine.app.lambda_handler
       Timeout: 120
       MemorySize: 1024
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MediAgentFhirTable
         - Statement:
-            - Effect: Allow
+            - Sid: BedrockInvokeModelAccess
+              Effect: Allow
               Action:
                 - bedrock:InvokeModel
               Resource: "*"
@@ -224,7 +270,8 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: rate(1 day)
-            Description: Daily proactive insights generation
+            Name: !Sub "mediagent-daily-insights-${AWS::StackName}"
+            Enabled: true
         GetInsightsApi:
           Type: Api
           Properties:
@@ -256,19 +303,20 @@ Resources:
             Path: /followups/{followUpId}
             Method: patch
 
-  # ----------------------------------------------------------------------------
-  # Lambda 4: Voice Gateway
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Lambda 4: VoiceGatewayFunction
+  # Real-time voice interaction with Bedrock streaming.
+  # ---------------------------------------------------------------------------
   VoiceGatewayFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/voice_gateway/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.voice_gateway.app.lambda_handler
       Timeout: 60
-      MemorySize: 512
       Policies:
         - Statement:
-            - Effect: Allow
+            - Sid: BedrockStreamingAccess
+              Effect: Allow
               Action:
                 - bedrock:InvokeModelWithResponseStream
               Resource: "*"
@@ -280,52 +328,73 @@ Resources:
             Path: /voice/session
             Method: post
 
-  # ----------------------------------------------------------------------------
-  # Lambda 5: Family Management
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Lambda 5: FamilyManagementFunction
+  # Multi-user profile management.
+  # Note: "Method: any" is invalid in SAM — explicit HTTP verbs only.
+  # ---------------------------------------------------------------------------
   FamilyManagementFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/family_management/
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Timeout: 30
+      CodeUri: ./
+      Handler: lambdas.family_management.app.lambda_handler
       MemorySize: 256
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref MediAgentTable
+            TableName: !Ref MediAgentFhirTable
       Events:
-        FamiliesApi:
+        CreateFamilyApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
             Path: /families
             Method: post
-        FamilyMembersApi:
+        GetFamiliesApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families
+            Method: get
+        GetFamilyMembersApi:
           Type: Api
           Properties:
             RestApiId: !Ref MediAgentApi
             Path: /families/{familyId}/members
-            Method: any
+            Method: get
+        AddFamilyMemberApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families/{familyId}/members
+            Method: post
+        DeleteFamilyMemberApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MediAgentApi
+            Path: /families/{familyId}/members/{memberId}
+            Method: delete
 
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Bedrock Agent Action Group Lambdas
+  # These are invoked directly by the Bedrock Agent, not via API Gateway.
+  # ---------------------------------------------------------------------------
   ActionHealthDataFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/agent_chat/action_groups/
-      Handler: health_data_actions.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.agent_chat.action_groups.health_data_actions.lambda_handler
       Timeout: 15
       MemorySize: 256
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
         - Statement:
-            - Effect: Allow
+            - Sid: BedrockInvokeForHealthData
+              Effect: Allow
               Action:
                 - bedrock:InvokeModel
               Resource: "*"
 
-  # Allow the Bedrock Agent service to invoke ActionHealthDataFunction
   ActionHealthDataFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -337,15 +406,14 @@ Resources:
   ActionFamilyFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/agent_chat/action_groups/
-      Handler: family_actions.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.agent_chat.action_groups.family_actions.lambda_handler
       Timeout: 15
       MemorySize: 256
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
 
-  # Allow the Bedrock Agent service to invoke ActionFamilyFunction
   ActionFamilyFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -357,15 +425,14 @@ Resources:
   ActionTrendsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: lambdas/agent_chat/action_groups/
-      Handler: trend_actions.lambda_handler
+      CodeUri: ./
+      Handler: lambdas.agent_chat.action_groups.trend_actions.lambda_handler
       Timeout: 15
       MemorySize: 256
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MediAgentFhirTable
 
-  # Allow the Bedrock Agent service to invoke ActionTrendsFunction
   ActionTrendsFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -374,25 +441,37 @@ Resources:
       Principal: bedrock.amazonaws.com
       SourceAccount: !Ref AWS::AccountId
 
+# =============================================================================
+# Outputs
+# =============================================================================
 Outputs:
   ApiBaseUrl:
-    Description: "API Gateway endpoint URL for Prod stage"
+    Description: "API Gateway endpoint URL"
     Value: !Sub "https://${MediAgentApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
-  ApiKeyDoc:
-    Description: "To get the API Key, go to API Gateway console -> API Keys, or use CLI: aws apigateway get-api-keys --include-values"
-    Value: "Check AWS Console or run CLI command"
+
+  ApiKeyInstruction:
+    Description: "Fetch the generated API key value"
+    Value: !Sub "aws apigateway get-api-keys --include-values --region ${AWS::Region} --output table"
+
+  ReportsBucketName:
+    Description: "S3 bucket for medical reports"
+    Value: !Ref MediAgentReportsBucket
+
+  FhirTableName:
+    Description: "DynamoDB FHIR table"
+    Value: !Ref MediAgentFhirTable
+
   ExtractReportFunctionArn:
-    Description: "Extract Report Lambda Function ARN"
     Value: !GetAtt ExtractReportFunction.Arn
+
   AgentChatFunctionArn:
-    Description: "Agent Chat Lambda Function ARN"
     Value: !GetAtt AgentChatFunction.Arn
+
   ActionHealthDataFunctionArn:
-    Description: "[Action Group] Health Data Lambda ARN — wire into Bedrock Agent chetana-action-health-data"
     Value: !GetAtt ActionHealthDataFunction.Arn
+
   ActionFamilyFunctionArn:
-    Description: "[Action Group] Family Lambda ARN — wire into Bedrock Agent chetana-action-family"
     Value: !GetAtt ActionFamilyFunction.Arn
+
   ActionTrendsFunctionArn:
-    Description: "[Action Group] Trends Lambda ARN — wire into Bedrock Agent chetana-action-trends"
     Value: !GetAtt ActionTrendsFunction.Arn
