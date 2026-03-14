@@ -26,25 +26,20 @@ logger = Logger(service="insights-engine")
 repo = DynamoRepository(TABLE_NAME)
 
 
-def _decimal_default(obj):
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    raise TypeError
-
+from lambdas.shared.utils import json_dumps
 
 def _ok(body: dict) -> dict:
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-        "body": json.dumps(body, default=_decimal_default),
+        "body": json_dumps(body),
     }
-
 
 def _err(status: int, code: str, msg: str) -> dict:
     return {
         "statusCode": status,
         "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-        "body": json.dumps({"error": {"code": code, "message": msg}}),
+        "body": json_dumps({"error": {"code": code, "message": msg}}),
     }
 
 

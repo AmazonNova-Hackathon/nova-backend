@@ -33,6 +33,8 @@ def lambda_handler(event: dict, context: LambdaContext):
         return _build_error(500, "INTERNAL_ERROR", "An unexpected error occurred processing the chat.")
 
 
+from lambdas.shared.utils import json_dumps
+
 def _build_response(status_code: int, body: dict) -> dict:
     return {
         "statusCode": status_code,
@@ -40,7 +42,7 @@ def _build_response(status_code: int, body: dict) -> dict:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body),
+        "body": json_dumps(body),
     }
 
 

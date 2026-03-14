@@ -22,18 +22,20 @@ from lambdas.shared.models.fhir import Family, Member
 logger = Logger(service="family-management")
 repo = DynamoRepository(TABLE_NAME)
 
+from lambdas.shared.utils import json_dumps
+
 def _ok(body: dict) -> dict:
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-        "body": json.dumps(body),
+        "body": json_dumps(body),
     }
 
 def _err(status: int, code: str, msg: str) -> dict:
     return {
         "statusCode": status,
         "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-        "body": json.dumps({"error": {"code": code, "message": msg}}),
+        "body": json_dumps({"error": {"code": code, "message": msg}}),
     }
 
 @logger.inject_lambda_context(log_event=False)

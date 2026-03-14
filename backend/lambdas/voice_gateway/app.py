@@ -37,6 +37,8 @@ from lambdas.voice_gateway.voice_service import process_voice_turn
 logger = Logger(service="voice-gateway")
 
 
+from lambdas.shared.utils import json_dumps
+
 def _ok(body: dict) -> dict:
     return {
         "statusCode": 200,
@@ -44,7 +46,7 @@ def _ok(body: dict) -> dict:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body),
+        "body": json_dumps(body),
     }
 
 
@@ -55,7 +57,7 @@ def _err(status: int, code: str, message: str) -> dict:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps({"error": {"code": code, "message": message}}),
+        "body": json_dumps({"error": {"code": code, "message": message}}),
     }
 
 
