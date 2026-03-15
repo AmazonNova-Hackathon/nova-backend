@@ -16,6 +16,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
 from lambdas.shared.utils import extract_param
+from lambdas.shared.loinc_mapping import find_loinc_code
 
 logger = Logger(service="action-trends")
 repo = DynamoRepository(TABLE_NAME)
@@ -74,7 +75,31 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         if function == "computeTrend":
             member_id = extract_param(event, "memberId")
             loinc_code = extract_param(event, "loincCode")
-            obs = repo.get_observations(family_id, member_id, loinc_code)
+            test_name = extract_param(event, "testName")
+            
+            search_query = loinc_code or test_name
+            effective_code = loinc_code
+            
+            if search_query:
+                resolved = find_loinc_code(search_query)
+                if resolved["code"] != "unknown":
+                    effective_code = resolved["code"]
+                elif not effective_code:
+                    effective_code = search_query
+            
+            logger.info(f"Computing trend for '{search_query}' using code '{effective_code}'")
+            obs = repo.get_observations(family_id, member_id, effective_code)
+            
+            # Fallback if no observations found with resolved code
+            if not obs and search_query:
+                all_obs = repo.get_observations(family_id, member_id)
+                obs = [
+                    o for o in all_obs 
+                    if search_query.lower() in o.get("name", "").lower() or 
+                       search_query.lower() in o.get("loincCode", "").lower() or
+                       (effective_code and effective_code.lower() in o.get("loincCode", "").lower())
+                ]
+
             obs.sort(key=lambda x: x.get("date", ""))
 
             numeric_values = []
@@ -100,12 +125,31 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
 
         elif function == "compareMembers":
             loinc_code = extract_param(event, "loincCode")
+            test_name = extract_param(event, "testName")
             members_raw = extract_param(event, "memberIds")  # comma-separated
             member_ids = [m.strip() for m in members_raw.split(",")] if members_raw else []
 
+            search_query = loinc_code or test_name
+            effective_code = loinc_code
+            if search_query:
+                resolved = find_loinc_code(search_query)
+                if resolved["code"] != "unknown":
+                    effective_code = resolved["code"]
+                elif not effective_code:
+                    effective_code = search_query
+
             comparison = {}
             for m_id in member_ids:
-                obs = repo.get_observations(family_id, m_id, loinc_code)
+                obs = repo.get_observations(family_id, m_id, effective_code)
+                if not obs and search_query:
+                    all_obs = repo.get_observations(family_id, m_id)
+                    obs = [
+                        o for o in all_obs 
+                        if search_query.lower() in o.get("name", "").lower() or 
+                           search_query.lower() in o.get("loincCode", "").lower() or
+                           (effective_code and effective_code.lower() in o.get("loincCode", "").lower())
+                    ]
+                
                 obs.sort(key=lambda x: x.get("date", ""))
                 if obs:
                     latest = obs[-1]

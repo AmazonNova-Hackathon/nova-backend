@@ -15,6 +15,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
 from lambdas.shared.utils import extract_param
+from lambdas.shared.loinc_mapping import find_loinc_code
 
 logger = Logger(service="action-health-data")
 repo = DynamoRepository(TABLE_NAME)
@@ -66,21 +67,35 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             result = {"familyId": family_id, "memberId": member_id, "reports": reports, "total": len(reports)}
 
         elif function == "getObservations":
-            search_query = extract_param(event, "loincCode") or extract_param(event, "testName")
+            loinc_code = extract_param(event, "loincCode")
+            test_name = extract_param(event, "testName")
+            search_query = loinc_code or test_name
             from_date = extract_param(event, "fromDate")
             to_date = extract_param(event, "toDate")
             
-            # Initial try with the raw loinc_code (which might be a name)
-            observations = repo.get_observations(family_id, member_id, search_query, from_date, to_date)
-            
-            # If no results and search_query provided, try full search and filter by name
-            if not observations and search_query:
-                logger.info(f"LOINC search failed for '{search_query}', trying name-based search")
-                all_member_obs = repo.get_observations(family_id, member_id, from_date=from_date, to_date=to_date)
-                observations = [
-                    o for o in all_member_obs 
-                    if search_query.lower() in o.get("name", "").lower() or search_query.lower() in o.get("loincCode", "").lower()
-                ]
+            observations = []
+            if search_query:
+                # Try to resolve LOINC code if it looks like a name
+                resolved = find_loinc_code(search_query)
+                effective_code = resolved["code"] if resolved["code"] != "unknown" else search_query
+                
+                logger.info(f"Searching for '{search_query}' using code '{effective_code}'")
+                observations = repo.get_observations(family_id, member_id, effective_code, from_date, to_date)
+                
+                # If no results and effective_code was different from original search_query, 
+                # or if we suspect it's a name that isn't in our map, try name-based search
+                if not observations:
+                    logger.info(f"Primary search failed for '{effective_code}', trying name-based fallback")
+                    all_member_obs = repo.get_observations(family_id, member_id, from_date=from_date, to_date=to_date)
+                    observations = [
+                        o for o in all_member_obs 
+                        if search_query.lower() in o.get("name", "").lower() or 
+                           search_query.lower() in o.get("loincCode", "").lower() or
+                           effective_code.lower() in o.get("loincCode", "").lower()
+                    ]
+            else:
+                # No search query, return all for member
+                observations = repo.get_observations(family_id, member_id, from_date=from_date, to_date=to_date)
 
             for o in observations:
                 o["summary"] = f"{o.get('name')} was {o.get('value')} {o.get('unit')} on {o.get('date')} ({o.get('interpretation', 'Normal')})"

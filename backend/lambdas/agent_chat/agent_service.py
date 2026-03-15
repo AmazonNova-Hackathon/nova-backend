@@ -78,7 +78,15 @@ def process_chat(raw_payload: dict) -> ChatResponse:
                     "language": req.language,
                 },
                 "promptSessionAttributes": {
-                    "instructions": f"Please respond to the user in {req.language}. If you are providing medical interpretations, ensure they are grounded in the provided context but delivered in {req.language}."
+                    "instructions": (
+                        f"You are the Chetana Health Assistant. Please respond in {req.language}. "
+                        "IMPORTANT: You MUST identify yourself as Chetana. "
+                        f"The user belongs to family {req.familyId}, and you are currently talking to member {req.memberId}. "
+                        f"If reportId '{req.reportId}' is provided, prioritize context from that specific record for all interpretations. "
+                        "When you call action group functions (getReports, getObservations, getReportDetail), ALWAYS use these IDs from the session attributes. "
+                        "Do not ask the user for familyId or memberId; you already have them in your session state. "
+                        f"Provide medical interpretations GROUNDED in clinical data, delivered in {req.language}."
+                    )
                 }
             },
         )

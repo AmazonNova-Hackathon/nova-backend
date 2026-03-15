@@ -113,12 +113,11 @@ const InsightCard = ({ insight }: { insight: Insight }) => (
 );
 
 
-const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, onClose }: { familyId: string; memberId: string; reportId?: string; initialQuery?: string; onClose: () => void }) => {
+const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language, setLanguage, onClose }: { familyId: string; memberId: string; reportId?: string; initialQuery?: string; language: string; setLanguage: (l: string) => void; onClose: () => void }) => {
   const [message, setMessage] = useState('');
   const [chatLog, setChatLog] = useState<{ role: string; content: string }[]>([]);
   const [sessionId, setSessionId] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [language, setLanguage] = useState('English');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const lastProcessedQuery = useRef<string | null>(null);
@@ -225,20 +224,20 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, onClose 
   );
 };
 
-const ReportDetailView = ({ report, onBack, onChatToggle }: { report: Report; onBack: () => void; onChatToggle: (isOpen: boolean) => void }) => {
+const ReportDetailView = ({ report, onBack, isChatOpen, setIsChatOpen, language, setLanguage }: { report: Report; onBack: () => void; isChatOpen: boolean; setIsChatOpen: (o: boolean) => void; language: string; setLanguage: (l: string) => void }) => {
   const [observations, setObservations] = useState<Observation[]>([]);
   const { appSession, selectedMember } = (window as any).appGlobals;
   const [initialChatQuery, setInitialChatQuery] = useState<string | undefined>();
-  const [isChatOpen, setIsChatOpen] = useState(false);
-
-  useEffect(() => {
-    onChatToggle(isChatOpen);
-  }, [isChatOpen]);
 
   useEffect(() => {
     api.getObservations(appSession.familyId, selectedMember.id)
        .then(all => setObservations(all.filter(o => o.reportId === report.reportId)));
   }, [report.reportId]);
+
+  const handleRowClick = (name: string) => {
+    setInitialChatQuery(`Explain what my ${name} level means in this report.`);
+    setIsChatOpen(true);
+  };
 
   return (
     <div className="report-workspace">
@@ -261,19 +260,18 @@ const ReportDetailView = ({ report, onBack, onChatToggle }: { report: Report; on
            <p style={{ color: 'var(--text-secondary)', fontSize: '1.125rem' }}>Clinical Data Analyzed on {report.date}</p>
         </div>
 
-        <LabResultsTable observations={observations} onRowClick={(name) => {
-          setInitialChatQuery(`What does my ${name} level mean in this report?`);
-          setIsChatOpen(true);
-        }} />
+        <LabResultsTable observations={observations} onRowClick={handleRowClick} />
       </div>
       
       {isChatOpen && (
         <ChetanaAssistant 
-          key={initialChatQuery || 'default'}
+          key={initialChatQuery || 'default-chat'}
           familyId={appSession.familyId} 
           memberId={selectedMember.id} 
           reportId={report.reportId}
           initialQuery={initialChatQuery} 
+          language={language}
+          setLanguage={setLanguage}
           onClose={() => setIsChatOpen(false)} 
         />
       )}
@@ -553,6 +551,7 @@ function App() {
   const [currentView, setCurrentView] = useState<'dashboard' | 'report-detail'>('dashboard');
   const [activeReport, setActiveReport] = useState<Report | null>(null);
   const [selectedTrendName, setSelectedTrendName] = useState<string>('');
+  const [chatLanguage, setChatLanguage] = useState<string>('English');
 
   useEffect(() => {
     if (observations.length > 0 && !selectedTrendName) {
@@ -773,7 +772,14 @@ function App() {
         <div className="dashboard-grid">
           {currentView === 'report-detail' && activeReport ? (
             <div style={{ gridColumn: 'span 12' }}>
-               <ReportDetailView report={activeReport} onBack={() => { setIsChatOpen(false); setCurrentView('dashboard'); }} onChatToggle={setIsChatOpen} />
+               <ReportDetailView 
+                 report={activeReport!} 
+                 onBack={() => { setIsChatOpen(false); setCurrentView('dashboard'); }} 
+                 isChatOpen={isChatOpen}
+                 setIsChatOpen={setIsChatOpen}
+                 language={chatLanguage}
+                 setLanguage={setChatLanguage}
+               />
             </div>
           ) : (
             <>
