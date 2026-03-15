@@ -24,9 +24,43 @@ repo = DynamoRepository(TABLE_NAME)
 def _decimal_default(obj):
     """JSON serializer for Decimal values returned by DynamoDB boto3 resource."""
     if isinstance(obj, Decimal):
-        # Preserve int representation where possible (e.g. age, count fields)
         return int(obj) if obj % 1 == 0 else float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
+# Fields the agent doesn't need — strips ~60% of token bloat
+_INTERNAL_FIELDS = {"pk", "sk", "meta", "createdBy", "updatedBy", "version",
+                    "isDeleted", "createdAt", "updatedAt", "s3Key", "familyId", "memberId"}
+
+
+def _slim_obs(observations: list) -> list:
+    """Strip internal DynamoDB fields and deduplicate by (name, date).
+    Keeps the record with the highest meta.version; on tie, prefers latest createdAt.
+    This handles both intentional record updates (version++) and accidental double-inserts
+    from the extraction Lambda (same version=1, slightly different createdAt).
+    """
+    seen: dict = {}  # key=(name, date) -> (obs, version, created_at)
+    for obs in observations:
+        key = (obs.get("name", ""), obs.get("date", ""))
+        meta = obs.get("meta") or {}
+        version = meta.get("version", 1)
+        created_at = meta.get("createdAt", "")
+        if key not in seen:
+            seen[key] = (obs, version, created_at)
+        else:
+            _, best_ver, best_created = seen[key]
+            if version > best_ver or (version == best_ver and created_at > best_created):
+                seen[key] = (obs, version, created_at)
+    result = []
+    for obs, _, _ in seen.values():
+        slim = {k: v for k, v in obs.items() if k not in _INTERNAL_FIELDS}
+        result.append(slim)
+    return result
+
+
+def _slim_report(report: dict) -> dict:
+    """Strip internal fields from a report dict."""
+    return {k: v for k, v in report.items() if k not in _INTERNAL_FIELDS}
 
 
 def _build_response(action_group: str, function: str, result: dict) -> dict:
@@ -57,14 +91,16 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
     try:
         if function == "getReports":
             reports = repo.get_reports(family_id, member_id)
-            # Annotate each report with a human-readable summary for the agent
+            slim_reports = []
             for r in reports:
-                r["summary"] = (
+                sr = _slim_report(r)
+                sr["summary"] = (
                     f"{r.get('reportType', 'Report')} on {r.get('date', 'unknown date')} — "
                     f"{r.get('totalObservations', 0)} results, "
                     f"{r.get('abnormalCount', 0)} abnormal"
                 )
-            result = {"familyId": family_id, "memberId": member_id, "reports": reports, "total": len(reports)}
+                slim_reports.append(sr)
+            result = {"memberId": member_id, "reports": slim_reports, "total": len(slim_reports)}
 
         elif function == "getObservations":
             loinc_code = extract_param(event, "loincCode")
@@ -100,13 +136,13 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             for o in observations:
                 o["summary"] = f"{o.get('name')} was {o.get('value')} {o.get('unit')} on {o.get('date')} ({o.get('interpretation', 'Normal')})"
 
-            abnormals = [o for o in observations if o.get("isAbnormal")]
+            slim = _slim_obs(observations)
+            abnormals = [o for o in slim if o.get("isAbnormal")]
             result = {
-                "familyId": family_id,
                 "memberId": member_id,
                 "searchTerm": search_query,
-                "observations": observations,
-                "total": len(observations),
+                "observations": slim,
+                "total": len(slim),
                 "abnormalCount": len(abnormals),
             }
 
@@ -116,10 +152,10 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             if detail is None:
                 result = {"error": f"Report {report_id} not found for member {member_id}"}
             else:
-                obs = detail.get("observations", [])
+                obs = _slim_obs(detail.get("observations", []))
                 abnormals = [o for o in obs if o.get("isAbnormal")]
                 result = {
-                    "report": detail.get("report"),
+                    "report": _slim_report(detail.get("report", {})),
                     "observations": obs,
                     "abnormalObservations": abnormals,
                     "totalObservations": len(obs),
