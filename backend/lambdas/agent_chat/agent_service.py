@@ -74,6 +74,11 @@ def process_chat(raw_payload: dict) -> ChatResponse:
                 "sessionAttributes": {
                     "familyId": req.familyId,
                     "memberId": req.memberId,
+                    "reportId": req.reportId,
+                    "language": req.language,
+                },
+                "promptSessionAttributes": {
+                    "instructions": f"Please respond to the user in {req.language}. If you are providing medical interpretations, ensure they are grounded in the provided context but delivered in {req.language}."
                 }
             },
         )

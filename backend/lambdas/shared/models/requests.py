@@ -21,3 +21,5 @@ class ChatRequest(BaseModel):
     # The Bedrock Agent holds multi-turn conversation history server-side via sessionId,
     # so conversationHistory is no longer needed on the client side.
     sessionId: str = ""
+    reportId: str = ""
+    language: str = "English"

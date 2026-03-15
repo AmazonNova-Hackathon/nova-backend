@@ -15,6 +15,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
+from lambdas.shared.utils import extract_param
 
 logger = Logger(service="action-family")
 repo = DynamoRepository(TABLE_NAME)
@@ -25,13 +26,6 @@ def _decimal_default(obj):
     if isinstance(obj, Decimal):
         return int(obj) if obj % 1 == 0 else float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-
-def _get_param(parameters: list, name: str):
-    for p in parameters:
-        if p.get("name") == name:
-            return p.get("value")
-    return None
 
 
 def _build_response(action_group: str, function: str, result: dict) -> dict:
@@ -53,11 +47,10 @@ def _build_response(action_group: str, function: str, result: dict) -> dict:
 def lambda_handler(event: dict, context: LambdaContext) -> dict:
     action_group = event.get("actionGroup")
     function = event.get("function")
-    parameters = event.get("parameters", [])
 
     logger.info("Invoked action", extra={"function": function, "actionGroup": action_group})
 
-    family_id = _get_param(parameters, "familyId")
+    family_id = extract_param(event, "familyId")
 
     try:
         if function == "getFamilyDashboard":
@@ -80,7 +73,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             }
 
         elif function == "getMemberDetail":
-            member_id = _get_param(parameters, "memberId")
+            member_id = extract_param(event, "memberId")
             member = repo.get_member(family_id, member_id)
             if member is None:
                 result = {"error": f"Member {member_id} not found in family {family_id}"}
@@ -99,7 +92,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
                 }
 
         elif function == "getAbnormals":
-            member_id = _get_param(parameters, "memberId")
+            member_id = extract_param(event, "memberId")
             all_obs = repo.get_observations(family_id, member_id)
             abnormals = [o for o in all_obs if o.get("isAbnormal")]
             # Sort by date descending so agent sees the most recent issues first

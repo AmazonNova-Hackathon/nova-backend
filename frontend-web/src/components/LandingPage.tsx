@@ -87,7 +87,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp, theme, onT
           </div>
           <div>
             <div style={{ fontSize: '1.125rem', fontWeight: 800, letterSpacing: '-0.03em', fontFamily: 'var(--font-header)' }}>CHETANA</div>
-            <div style={{ fontSize: '0.6rem', color: 'var(--chetana-teal)', fontWeight: 700, letterSpacing: '0.1em' }}>PATIENT PORTAL</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--chetana-teal)', fontWeight: 600, letterSpacing: '0.04em' }}>Awaken to your health</div>
           </div>
         </div>
 
@@ -217,7 +217,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp, theme, onT
 
       {/* ── Footer ── */}
       <footer className="landing-footer">
-        <div>© 2025 Chetana Patient Portal · FHIR HL7 R4 Compliant</div>
+        <div>© 2025 Chetana · Awaken to your health · FHIR HL7 R4 Compliant</div>
         <div style={{ display: 'flex', gap: '1.5rem' }}>
           <span>Privacy Policy</span>
           <span>HIPAA Notice</span>

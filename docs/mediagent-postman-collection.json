@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "fdbe87f9-da03-49d7-83d2-c2e50529944a",
-    "name": "MediAgent API — v4.1 (Hierarchical REST + Session Chat)",
-    "description": "Final hierarchical REST API structure. Scoped paths: /families/{fid}/members/{mid}/... for all health data. Includes sessionId support for multi-turn AI chat.",
+    "name": "MediAgent API — v4.2 (Multi-Lingual + Targeted Chat)",
+    "description": "Final hierarchical REST API structure. Includes language support (Hindi/Marathi/Tamil) and targeted reportId context for AI chat.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -279,7 +279,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"message\": \"Explain my latest reports.\",\n    \"sessionId\": \"{{sessionId}}\"\n}",
+              "raw": "{\n    \"message\": \"Explain my latest reports in Marathi.\",\n    \"sessionId\": \"{{sessionId}}\",\n    \"reportId\": \"{{reportId}}\",\n    \"language\": \"Marathi\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {

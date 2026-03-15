@@ -11,6 +11,9 @@ from lambdas.shared.models.fhir import Observation, DiagnosticReport, Member
 from lambdas.shared.repositories.s3_repository import S3Repository
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.loinc_mapping import find_loinc_code
+from aws_lambda_powertools import Logger
+
+logger = Logger(service="extraction-service")
 
 s3_repo = S3Repository(BUCKET_NAME)
 dynamo_repo = DynamoRepository(TABLE_NAME)

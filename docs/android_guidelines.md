@@ -43,14 +43,24 @@ This returns a timeline of all lab parameters.
 The Chat API supports multi-turn context using a `sessionId`.
 
 ### API: `POST /families/{fid}/members/{mid}/chat`
-- **Request**: `{"message": "What do these results mean?", "sessionId": ""}`
+- **Request**: 
+  ```json
+  {
+    "message": "What do these results mean?", 
+    "sessionId": "abc-123",
+    "reportId": "rep-xyz",
+    "language": "Hindi"
+  }
+  ```
 - **Response**: `{"reply": "...", "sessionId": "abc-123"}`
 
 ### Implementation Guide:
 1.  **Start State**: Initialize a `currentSessionId` variable as an empty string.
 2.  **First Turn**: Send the message with an empty `sessionId`.
 3.  **Persist Context**: On every response, update `currentSessionId` with the value returned from the backend.
-4.  **Subsequent Turns**: Pass the stored `sessionId` in the payload. This allows the AI (Bedrock Agent) to remember the patient's history and previous questions.
+4.  **Targeted Context**: If the user is currently viewing a specific report, always pass the `reportId`. This allows the AI to provide "Targeted Insights" specific to that document.
+5.  **Localization**: Pass the `language` parameter (**English, Hindi, Marathi, Tamil**) to receive medical interpretions in the user's native tongue.
+6.  **Subsequent Turns**: Pass the stored `sessionId` in the payload. This allows the AI (Bedrock Agent) to remember the patient's history and previous questions.
 
 ---
 

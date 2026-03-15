@@ -140,7 +140,8 @@ Resources:
           Description: !Sub "MediAgent usage plan — ${AWS::StackName}"
       # Enable binary support for raw image/PDF uploads
       BinaryMediaTypes:
-        - "*/*"
+        - "image/~*"
+        - "application/pdf"
 
   # ---------------------------------------------------------------------------
   # Lambda 1: ExtractReportFunction

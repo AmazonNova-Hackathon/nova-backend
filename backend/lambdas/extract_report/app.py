@@ -10,6 +10,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from lambdas.extract_report.extraction_service import process_s3_upload, generate_upload_url
 from lambdas.extract_report.report_service import get_reports, get_observations, get_report_status, delete_report, get_report_download_url
 from lambdas.shared.models.responses import ErrorResponse
+from lambdas.shared.utils import json_dumps, get_event_body
 
 logger = Logger(service="extract_report")
 
@@ -71,7 +72,7 @@ def lambda_handler(event: dict, context: LambdaContext):
                 from_date=params.get('fromDate'),
                 to_date=params.get('toDate')
             )
-            return _build_response(200, response)
+            return _build_response(200, {"observations": response})
             
         # GET /families/{familyId}/members/{memberId}/reports/{reportId}/status
         elif method == 'GET' and path.endswith('/status'):
@@ -106,7 +107,7 @@ def lambda_handler(event: dict, context: LambdaContext):
 
         # POST /families/{familyId}/members/{memberId}/reports/upload (Manual trigger)
         elif method == 'POST' and path.endswith('/reports/upload'):
-            body = json.loads(event.get('body') or '{}')
+            body = get_event_body(event)
             s3_key = body.get('s3Key')
             
             if not s3_key or not family_id or not member_id:

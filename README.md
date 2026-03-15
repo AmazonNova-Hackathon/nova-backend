@@ -9,6 +9,7 @@ Serverless AWS backend for an Android/web app that extracts lab data using **Ama
 - **Multimodal Extraction**: Supports `PNG`, `JPEG`, `WebP`, and `PDF` (high-res mobile photos & documents).
 - **Hierarchical REST API**: Strictly organized paths: `/families/{fid}/members/{mid}/...`.
 - **Session-Aware AI Chat**: Native support for multi-turn conversations via Bedrock Agents.
+- **Hyper-Local Intelligence**: Support for native languages (**Hindi, Marathi, Tamil**) with medical grounding.
 - **Health Trends**: Automated mapping of extracted values to **LOINC codes** for longitudinal tracking.
 - **Data Integrity**: Optimized for medical precision with `Decimal` serialization and `meta`-block tracking.
 
@@ -45,9 +46,13 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# Deploy
+# Deploy backend
 sam build
 sam deploy
+
+# Deploy frontend (Unified)
+cd ../frontend-web
+.\deploy.ps1
 ```
 
 ### 2. Postman Testing (v4.1+)
@@ -93,3 +98,4 @@ The collection includes scripts that automatically capture `familyId`, `memberId
 - **Float Serialization**: Fixed! The system now uses `Decimal` types for all DB operations.
 - **MIME Mismatch**: Fixed! Supported formats include `image/*` and `application/pdf`.
 - **Chat Context loss**: Fixed! Always pass the `sessionId` from the previous response.
+- **Multi-lingual AI**: Enabled! Pass the `language` parameter to the `/chat` endpoint for native interpretations.

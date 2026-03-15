@@ -15,6 +15,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
+from lambdas.shared.utils import extract_param
 
 logger = Logger(service="action-trends")
 repo = DynamoRepository(TABLE_NAME)
@@ -25,13 +26,6 @@ def _decimal_default(obj):
     if isinstance(obj, Decimal):
         return int(obj) if obj % 1 == 0 else float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-
-def _get_param(parameters: list, name: str):
-    for p in parameters:
-        if p.get("name") == name:
-            return p.get("value")
-    return None
 
 
 def _build_response(action_group: str, function: str, result: dict) -> dict:
@@ -71,16 +65,15 @@ def _compute_trend_direction(values: list) -> str:
 def lambda_handler(event: dict, context: LambdaContext) -> dict:
     action_group = event.get("actionGroup")
     function = event.get("function")
-    parameters = event.get("parameters", [])
 
     logger.info("Invoked action", extra={"function": function, "actionGroup": action_group})
 
-    family_id = _get_param(parameters, "familyId")
+    family_id = extract_param(event, "familyId")
 
     try:
         if function == "computeTrend":
-            member_id = _get_param(parameters, "memberId")
-            loinc_code = _get_param(parameters, "loincCode")
+            member_id = extract_param(event, "memberId")
+            loinc_code = extract_param(event, "loincCode")
             obs = repo.get_observations(family_id, member_id, loinc_code)
             obs.sort(key=lambda x: x.get("date", ""))
 
@@ -106,8 +99,8 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             }
 
         elif function == "compareMembers":
-            loinc_code = _get_param(parameters, "loincCode")
-            members_raw = _get_param(parameters, "memberIds")  # comma-separated
+            loinc_code = extract_param(event, "loincCode")
+            members_raw = extract_param(event, "memberIds")  # comma-separated
             member_ids = [m.strip() for m in members_raw.split(",")] if members_raw else []
 
             comparison = {}
@@ -136,7 +129,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             }
 
         elif function == "detectPatterns":
-            member_id = _get_param(parameters, "memberId")
+            member_id = extract_param(event, "memberId")
             all_obs = repo.get_observations(family_id, member_id)
 
             # Group observations by LOINC code for per-test trend analysis

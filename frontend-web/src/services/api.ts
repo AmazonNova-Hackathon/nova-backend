@@ -6,6 +6,7 @@ export interface FamilyMember {
   age?: number;
   gender?: string;
   relationship?: string;
+  icon?: string;
 }
 
 export interface Observation {
@@ -16,6 +17,10 @@ export interface Observation {
   unit: string;
   date: string;
   isAbnormal: boolean;
+  interpretation?: 'N' | 'H' | 'L' | 'HH' | 'LL' | 'U';
+  reportId?: string;
+  normalLow?: number;
+  normalHigh?: number;
 }
 
 export interface Insight {
@@ -24,6 +29,8 @@ export interface Insight {
   title: string;
   summary: string;
   content: string;
+  citedObservations?: string[];
+  citedReports?: string[];
 }
 
 export interface Report {
@@ -115,12 +122,16 @@ export const api = {
     const data = await res.json();
     return (data.observations || []).map((o: any) => ({
       id: o.id,
-      loincCode: o.code?.coding?.[0]?.code || '',
-      name: o.code?.coding?.[0]?.display || o.code?.text || 'Observation',
-      value: o.valueQuantity?.value ?? 0,
-      unit: o.valueQuantity?.unit || '',
-      date: o.effectiveDateTime || o.issued || '',
-      isAbnormal: o.interpretation?.[0]?.coding?.[0]?.code === 'A',
+      loincCode: o.loincCode || '',
+      name: o.name || 'Observation',
+      value: o.value ?? 0,
+      unit: o.unit || '',
+      date: o.date || '',
+      isAbnormal: o.isAbnormal || false,
+      interpretation: o.interpretation,
+      reportId: o.reportId,
+      normalLow: o.normalLow,
+      normalHigh: o.normalHigh
     }));
   },
 
@@ -132,6 +143,15 @@ export const api = {
     if (!res.ok) throw new Error(`GET /insights failed: ${res.status}`);
     const data = await res.json();
     return data.insights || [];
+  },
+
+  generateInsights: async (familyId: string, memberId: string): Promise<any> => {
+    const res = await fetch(
+      `${BASE_URL}/families/${familyId}/members/${memberId}/insights/generate`,
+      { method: 'POST', headers }
+    );
+    if (!res.ok) throw new Error(`POST /insights/generate failed: ${res.status}`);
+    return res.json();
   },
 
   getReports: async (familyId: string, memberId: string): Promise<Report[]> => {
@@ -194,14 +214,14 @@ export const api = {
     return true;
   },
 
-  chat: async (familyId: string, memberId: string, message: string, sessionId: string = ''): Promise<{ reply: string; sessionId: string }> => {
+  chat: async (familyId: string, memberId: string, message: string, sessionId: string = '', reportId: string = '', language: string = 'English'): Promise<{ message: string; sessionId: string }> => {
     const res = await fetch(`${BASE_URL}/families/${familyId}/members/${memberId}/chat`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ message, sessionId }),
+      body: JSON.stringify({ message, sessionId, reportId, language }),
     });
     if (!res.ok) throw new Error(`POST /chat failed: ${res.status}`);
     const data = await res.json();
-    return { reply: data.reply, sessionId: data.sessionId };
+    return { message: data.reply, sessionId: data.sessionId };
   },
 };

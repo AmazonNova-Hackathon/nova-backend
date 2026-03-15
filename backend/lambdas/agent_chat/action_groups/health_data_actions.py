@@ -14,6 +14,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from lambdas.shared.repositories.dynamo_repository import DynamoRepository
 from lambdas.shared.config import TABLE_NAME
+from lambdas.shared.utils import extract_param
 
 logger = Logger(service="action-health-data")
 repo = DynamoRepository(TABLE_NAME)
@@ -25,13 +26,6 @@ def _decimal_default(obj):
         # Preserve int representation where possible (e.g. age, count fields)
         return int(obj) if obj % 1 == 0 else float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-
-def _get_param(parameters: list, name: str):
-    for p in parameters:
-        if p.get("name") == name:
-            return p.get("value")
-    return None
 
 
 def _build_response(action_group: str, function: str, result: dict) -> dict:
@@ -53,12 +47,11 @@ def _build_response(action_group: str, function: str, result: dict) -> dict:
 def lambda_handler(event: dict, context: LambdaContext) -> dict:
     action_group = event.get("actionGroup")
     function = event.get("function")
-    parameters = event.get("parameters", [])
 
     logger.info("Invoked action", extra={"function": function, "actionGroup": action_group})
 
-    family_id = _get_param(parameters, "familyId")
-    member_id = _get_param(parameters, "memberId")
+    family_id = extract_param(event, "familyId")
+    member_id = extract_param(event, "memberId")
 
     try:
         if function == "getReports":
@@ -73,22 +66,37 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             result = {"familyId": family_id, "memberId": member_id, "reports": reports, "total": len(reports)}
 
         elif function == "getObservations":
-            loinc_code = _get_param(parameters, "loincCode")
-            from_date = _get_param(parameters, "fromDate")
-            to_date = _get_param(parameters, "toDate")
-            observations = repo.get_observations(family_id, member_id, loinc_code, from_date, to_date)
+            search_query = extract_param(event, "loincCode") or extract_param(event, "testName")
+            from_date = extract_param(event, "fromDate")
+            to_date = extract_param(event, "toDate")
+            
+            # Initial try with the raw loinc_code (which might be a name)
+            observations = repo.get_observations(family_id, member_id, search_query, from_date, to_date)
+            
+            # If no results and search_query provided, try full search and filter by name
+            if not observations and search_query:
+                logger.info(f"LOINC search failed for '{search_query}', trying name-based search")
+                all_member_obs = repo.get_observations(family_id, member_id, from_date=from_date, to_date=to_date)
+                observations = [
+                    o for o in all_member_obs 
+                    if search_query.lower() in o.get("name", "").lower() or search_query.lower() in o.get("loincCode", "").lower()
+                ]
+
+            for o in observations:
+                o["summary"] = f"{o.get('name')} was {o.get('value')} {o.get('unit')} on {o.get('date')} ({o.get('interpretation', 'Normal')})"
+
             abnormals = [o for o in observations if o.get("isAbnormal")]
             result = {
                 "familyId": family_id,
                 "memberId": member_id,
-                "loincCode": loinc_code,
+                "searchTerm": search_query,
                 "observations": observations,
                 "total": len(observations),
                 "abnormalCount": len(abnormals),
             }
 
         elif function == "getReportDetail":
-            report_id = _get_param(parameters, "reportId")
+            report_id = extract_param(event, "reportId")
             detail = repo.get_report_detail(family_id, member_id, report_id)
             if detail is None:
                 result = {"error": f"Report {report_id} not found for member {member_id}"}

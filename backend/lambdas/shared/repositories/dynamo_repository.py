@@ -87,6 +87,18 @@ class DynamoRepository:
     # --------------------------------------------------------------------------
     def put_report_and_observations(self, report: DiagnosticReport, observations: list[Observation]) -> None:
         """Uses a DynamoDB batch_writer to save the report and observations together"""
+        # If we have a real date, try to clean up the "UNKNOWN" skeleton record
+        if report.date and report.date != "UNKNOWN":
+            try:
+                self.table.delete_item(
+                    Key={
+                        'pk': self._get_pk(report.familyId),
+                        'sk': f"REPORT#{report.memberId}#UNKNOWN#{report.reportId}"
+                    }
+                )
+            except Exception:
+                pass # Non-critical if it doesn't exist
+
         with self.table.batch_writer() as batch:
             # Write Report Item
             report_item = report.model_dump(exclude_none=True)
@@ -124,7 +136,29 @@ class DynamoRepository:
         response = self.table.query(
             KeyConditionExpression=Key('pk').eq(self._get_pk(family_id)) & Key('sk').begins_with(sk_prefix)
         )
-        return [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+        items = [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+        
+        # Deduplicate by reportId, keeping the one with the latest updatedAt or the most advanced status
+        deduped = {}
+        for item in items:
+            report_id = item.get('reportId')
+            if not report_id: continue
+            
+            if report_id not in deduped:
+                deduped[report_id] = item
+            else:
+                current = deduped[report_id]
+                status_rank = {"failed": 0, "uploading": 1, "processing": 2, "completed": 3}
+                item_rank = status_rank.get(item.get('status', '').lower(), 0)
+                curr_rank = status_rank.get(current.get('status', '').lower(), 0)
+                
+                if item_rank > curr_rank:
+                    deduped[report_id] = item
+                elif item_rank == curr_rank:
+                    if item.get('meta', {}).get('updatedAt', '') > current.get('meta', {}).get('updatedAt', ''):
+                        deduped[report_id] = item
+        
+        return list(deduped.values())
 
     def get_observations(self, family_id: str, member_id: str = None, loinc_code: str = None, 
                          from_date: str = None, to_date: str = None) -> list[dict]:
@@ -140,6 +174,18 @@ class DynamoRepository:
         )
         items = [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
         
+        # Deduplicate observations by their record ID
+        deduped = {}
+        for item in items:
+            obs_id = item.get('id')
+            if not obs_id: continue
+            if obs_id not in deduped:
+                deduped[obs_id] = item
+            elif item.get('meta', {}).get('updatedAt', '') > deduped[obs_id].get('meta', {}).get('updatedAt', ''):
+                deduped[obs_id] = item
+        
+        items = list(deduped.values())
+
         # In-memory filter for dates since they are further down the SK
         if from_date or to_date:
             filtered = []
@@ -191,7 +237,16 @@ class DynamoRepository:
         response = self.table.query(
             KeyConditionExpression=Key('pk').eq(self._get_pk(family_id)) & Key('sk').begins_with(sk_prefix)
         )
-        return [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+        items = [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+        
+        # Deduplicate
+        deduped = {}
+        for item in items:
+            rem_id = item.get('insightId') or item.get('id')
+            if not rem_id: continue
+            if rem_id not in deduped or item.get('meta', {}).get('updatedAt', '') > deduped[rem_id].get('meta', {}).get('updatedAt', ''):
+                deduped[rem_id] = item
+        return list(deduped.values())
 
     def get_followups(self, family_id: str, member_id: str = None) -> list[dict]:
         """Query all FollowUps for a family, optionally filtered to one member."""
@@ -199,7 +254,16 @@ class DynamoRepository:
         response = self.table.query(
             KeyConditionExpression=Key('pk').eq(self._get_pk(family_id)) & Key('sk').begins_with(sk_prefix)
         )
-        return [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+        items = [i for i in response.get('Items', []) if not i.get('meta', {}).get('isDeleted', False)]
+        
+        # Deduplicate
+        deduped = {}
+        for item in items:
+            rem_id = item.get('id')
+            if not rem_id: continue
+            if rem_id not in deduped or item.get('meta', {}).get('updatedAt', '') > deduped[rem_id].get('meta', {}).get('updatedAt', ''):
+                deduped[rem_id] = item
+        return list(deduped.values())
 
     def soft_delete_item(self, family_id: str, sk: str, user_id: str = "system") -> None:
         resp = self.table.get_item(Key={'pk': self._get_pk(family_id), 'sk': sk})

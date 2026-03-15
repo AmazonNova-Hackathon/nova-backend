@@ -1,3 +1,4 @@
+import _bootstrap  # noqa: F401
 import json
 import traceback
 from pydantic import ValidationError
@@ -6,6 +7,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from lambdas.agent_chat.agent_service import process_chat
 from lambdas.shared.models.responses import ErrorResponse
+from lambdas.shared.utils import json_dumps, get_event_body
 
 logger = Logger(service="agent_chat")
 
@@ -13,7 +15,7 @@ logger = Logger(service="agent_chat")
 @logger.inject_lambda_context(log_event=False)  # Avoid logging PII from chat messages
 def lambda_handler(event: dict, context: LambdaContext):
     method = event.get("httpMethod")
-    path = event.get("path")
+    path = event.get("path") or ""
 
     logger.info("Received request", extra={"method": method, "path": path})
 
@@ -23,7 +25,7 @@ def lambda_handler(event: dict, context: LambdaContext):
         member_id = path_parameters.get('memberId')
 
         if method == "POST" and path.endswith("/chat"):
-            body = json.loads(event.get("body", "{}"))
+            body = get_event_body(event)
             # Ensure context from path is used
             body['familyId'] = family_id
             body['memberId'] = member_id
