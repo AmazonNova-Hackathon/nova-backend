@@ -138,6 +138,9 @@ Resources:
         UsagePlan:
           CreateUsagePlan: PER_API
           Description: !Sub "MediAgent usage plan — ${AWS::StackName}"
+      # Enable binary support for raw image/PDF uploads
+      BinaryMediaTypes:
+        - "*/*"
 
   # ---------------------------------------------------------------------------
   # Lambda 1: ExtractReportFunction
@@ -459,6 +462,118 @@ Resources:
       Principal: bedrock.amazonaws.com
       SourceAccount: !Ref AWS::AccountId
 
+  # ---------------------------------------------------------------------------
+  # Frontend Hosting — S3 + CloudFront
+  # Same-Origin proxy pattern: /api/* routes to APIGW, everything else to S3.
+  # ---------------------------------------------------------------------------
+  MediAgentFrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "mediagent-web-${AWS::StackName}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  MediAgentFrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Description: "OAC for MediAgent Frontend"
+        Name: !Sub "${AWS::StackName}-frontend-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  MediAgentFrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MediAgentFrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "s3:GetObject"
+            Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${MediAgentFrontendBucket}/*"
+            Principal:
+              Service: "cloudfront.amazonaws.com"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${MediAgentCloudFrontDistribution}"
+
+  MediAgentCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Comment: !Sub "MediAgent Frontend Distribution - ${AWS::StackName}"
+        Origins:
+          - Id: FrontendS3Origin
+            DomainName: !GetAtt MediAgentFrontendBucket.DomainName
+            OriginAccessControlId: !Ref MediAgentFrontendOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: BackendApiOrigin
+            DomainName: !Sub "${MediAgentApi}.execute-api.${AWS::Region}.amazonaws.com"
+            OriginPath: "/prod"
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CacheBehaviors:
+          - PathPattern: "/api/*"
+            TargetOriginId: BackendApiOrigin
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            ForwardedValues:
+              QueryString: true
+              Headers:
+                - Authorization
+                - Content-Type
+                - X-Api-Key
+              Cookies:
+                Forward: none
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt MediAgentApiRewriteFunction.FunctionMetadata.FunctionARN
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponsePagePath: /index.html
+            ResponseCode: 200
+          - ErrorCode: 404
+            ResponsePagePath: /index.html
+            ResponseCode: 200
+
+  MediAgentApiRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${AWS::StackName}-api-rewrite"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: "Strip /api prefix from requests"
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+            var request = event.request;
+            request.uri = request.uri.replace(/^\/api/, '');
+            return request;
+        }
+
 # =============================================================================
 # Outputs
 # =============================================================================
@@ -493,3 +608,11 @@ Outputs:
 
   ActionTrendsFunctionArn:
     Value: !GetAtt ActionTrendsFunction.Arn
+
+  FrontendBucketName:
+    Description: "Upload built frontend files here"
+    Value: !Ref MediAgentFrontendBucket
+
+  CloudFrontURL:
+    Description: "Primary Application URL"
+    Value: !Sub "https://${MediAgentCloudFrontDistribution.DomainName}"

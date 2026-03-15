@@ -71,3 +71,27 @@ export default defineConfig([
   },
 ])
 ```
+
+---
+
+## 🚀 Deployment & Updating Code
+
+If you make any changes to the frontend React code, remember to follow these steps to update the production site:
+
+1. **Build the Application**:
+   Run this command in the `frontend-web` folder:
+   ```bash
+   npm run build
+   ```
+
+2. **Sync to AWS S3**:
+   Deploy the built files to the production bucket:
+   ```bash
+   aws s3 sync dist s3://mediagent-web-mediagent-623810446100 --delete
+   ```
+
+3. **Invalidate Cache (Optional)**:
+   If you don't see your changes immediately, you may need to invalidate the CloudFront cache:
+   ```bash
+   aws cloudfront create-invalidation --distribution-id <YOUR_DISTRIBUTION_ID> --paths "/*"
+   ```
