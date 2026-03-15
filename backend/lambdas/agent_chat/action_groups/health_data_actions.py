@@ -118,17 +118,20 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
                 logger.info(f"Searching for '{search_query}' using code '{effective_code}'")
                 observations = repo.get_observations(family_id, member_id, effective_code, from_date, to_date)
                 
-                # If no results and effective_code was different from original search_query, 
-                # or if we suspect it's a name that isn't in our map, try name-based search
+                # If no results try a wide fallback search
                 if not observations:
-                    logger.info(f"Primary search failed for '{effective_code}', trying name-based fallback")
+                    logger.info(f"Primary search failed, doing wide fallback search")
                     all_member_obs = repo.get_observations(family_id, member_id, from_date=from_date, to_date=to_date)
-                    observations = [
-                        o for o in all_member_obs 
-                        if search_query.lower() in o.get("name", "").lower() or 
-                           search_query.lower() in o.get("loincCode", "").lower() or
-                           effective_code.lower() in o.get("loincCode", "").lower()
-                    ]
+                    
+                    fallback_terms = [t.lower() for t in [search_query, effective_code, test_name, loinc_code] if t]
+                    
+                    for o in all_member_obs:
+                        obs_name_lower = o.get("name", "").lower()
+                        obs_code_lower = o.get("loincCode", "").lower()
+                        
+                        # If ANY of the terms match the name or loinc code of the observation
+                        if any(term in obs_name_lower or term in obs_code_lower for term in fallback_terms):
+                            observations.append(o)
             else:
                 # No search query, return all for member
                 observations = repo.get_observations(family_id, member_id, from_date=from_date, to_date=to_date)
