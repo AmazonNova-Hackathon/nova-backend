@@ -89,7 +89,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
                 return _err(400, "MISSING_PARAMS", "familyId and memberId are required in the path")
             insights = repo.get_insights(family_id, member_id)
             # Sort: unread first, then by generatedAt desc
-            insights.sort(key=lambda i: (i.get("read", False), i.get("generatedAt", "")), reverse=False)
+            insights.sort(key=lambda i: (not i.get("read", False), i.get("generatedAt", "")), reverse=True)
             return _ok({"insights": insights, "total": len(insights)})
 
         # GET /families/{fid}/members/{mid}/followups

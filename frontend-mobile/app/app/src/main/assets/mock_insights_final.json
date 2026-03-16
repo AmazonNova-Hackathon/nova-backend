@@ -1,0 +1,75 @@
+{
+  "familyId": "family-demo-001",
+  "unreadCount": 3,
+  "total": 5,
+  "insights": [
+    {
+      "insightId": "ins-001",
+      "memberId": "member-demo-001",
+      "memberName": "Rahul Sharma",
+      "severity": "urgent",
+      "title": "Glucose trending upward",
+      "summary": "Your fasting glucose has been above the reference range across your last 2 reports. This pattern is worth discussing with your doctor to understand the underlying cause.",
+      "suggestedAction": "Schedule a follow-up glucose test and consult your doctor about lifestyle modifications.",
+      "read": false,
+      "generatedAt": "2024-03-15",
+      "citedObservations": [
+        { "name": "Glucose (Fasting)", "loincCode": "2339-0" }
+      ]
+    },
+    {
+      "insightId": "ins-002",
+      "memberId": "member-demo-001",
+      "memberName": "Rahul Sharma",
+      "severity": "urgent",
+      "title": "HbA1c in pre-diabetic range",
+      "summary": "Your HbA1c is in the pre-diabetic range (5.7–6.4%). This is a pattern worth monitoring closely with your healthcare provider.",
+      "suggestedAction": "Discuss HbA1c trends with your doctor and consider dietary changes.",
+      "read": false,
+      "generatedAt": "2024-03-15",
+      "citedObservations": [
+        { "name": "HbA1c", "loincCode": "4548-4" }
+      ]
+    },
+    {
+      "insightId": "ins-003",
+      "memberId": "member-demo-001",
+      "memberName": "Rahul Sharma",
+      "severity": "attention",
+      "title": "LDL cholesterol above reference range",
+      "summary": "Your LDL cholesterol is above the reference range at 112 mg/dL. This is worth monitoring alongside your other lipid panel values.",
+      "suggestedAction": "Review your lipid panel trends with your doctor.",
+      "read": false,
+      "generatedAt": "2024-03-15",
+      "citedObservations": [
+        { "name": "LDL Cholesterol", "loincCode": "18262-6" }
+      ]
+    },
+    {
+      "insightId": "ins-004",
+      "memberId": "member-demo-001",
+      "memberName": "Rahul Sharma",
+      "severity": "attention",
+      "title": "Vitamin D below reference range",
+      "summary": "Your Vitamin D level is below the reference range at 28 ng/mL. This is a common finding worth discussing with your doctor.",
+      "suggestedAction": "Ask your doctor about Vitamin D supplementation.",
+      "read": true,
+      "generatedAt": "2024-03-14",
+      "citedObservations": [
+        { "name": "Vitamin D (25-OH)", "loincCode": "1989-3" }
+      ]
+    },
+    {
+      "insightId": "ins-005",
+      "memberId": "member-demo-002",
+      "memberName": "Sunita Sharma",
+      "severity": "informational",
+      "title": "Overall values within range",
+      "summary": "Most of Sunita's recent lab values are within the reference ranges. Continue regular check-ups to maintain this trend.",
+      "suggestedAction": "Continue regular health check-ups.",
+      "read": true,
+      "generatedAt": "2024-03-10",
+      "citedObservations": []
+    }
+  ]
+}

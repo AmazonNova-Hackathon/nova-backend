@@ -31,6 +31,16 @@ export interface Insight {
   content: string;
   citedObservations?: string[];
   citedReports?: string[];
+  generatedAt?: string;
+}
+
+export interface Followup {
+  id: string;
+  testName: string;
+  loincCode: string;
+  reason: string;
+  suggestedDate: string;
+  status: 'pending' | 'completed' | 'dismissed';
 }
 
 export interface Report {
@@ -143,6 +153,25 @@ export const api = {
     if (!res.ok) throw new Error(`GET /insights failed: ${res.status}`);
     const data = await res.json();
     return data.insights || [];
+  },
+
+  getFollowups: async (familyId: string, memberId: string): Promise<Followup[]> => {
+    const res = await fetch(
+      `${BASE_URL}/families/${familyId}/members/${memberId}/followups?status=all`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`GET /followups failed: ${res.status}`);
+    const data = await res.json();
+    return data.followups || [];
+  },
+
+  updateFollowup: async (familyId: string, memberId: string, followUpId: string, updates: Partial<Followup>) => {
+    const res = await fetch(
+      `${BASE_URL}/families/${familyId}/members/${memberId}/followups/${followUpId}`,
+      { method: 'PATCH', headers, body: JSON.stringify(updates) }
+    );
+    if (!res.ok) throw new Error(`PATCH /followups failed: ${res.status}`);
+    return res.json();
   },
 
   generateInsights: async (familyId: string, memberId: string): Promise<any> => {

@@ -13,61 +13,61 @@ const features = [
     icon: '🔐',
     color: 'hsla(175, 100%, 45%, 0.1)',
     iconColor: 'var(--chetana-teal)',
-    title: 'End-to-End Security',
-    desc: 'Your health data is encrypted with AES-256 at rest and TLS 1.3 in transit. Zero-knowledge architecture ensures only you and your family can access your records.',
+    title: 'Your Data, Your Control',
+    desc: 'AES-256 encryption at rest and TLS 1.3 in transit. Only your family can access your records — we can\'t see them either.',
   },
   {
     icon: '🏥',
     color: 'hsla(200, 85%, 55%, 0.1)',
     iconColor: 'hsl(200, 85%, 65%)',
     title: 'FHIR HL7 Standardization',
-    desc: 'All health records follow the international FHIR R4 standard. Interoperable with hospitals, labs, and insurance providers across the globe.',
+    desc: 'Every result is stored in FHIR R4 — the same international standard used by hospitals and insurers worldwide. Your data is truly portable.',
   },
   {
     icon: '🤖',
     color: 'hsla(45, 95%, 60%, 0.1)',
     iconColor: 'var(--solar-amber)',
-    title: 'Amazon Nova AI Engine',
-    desc: 'Powered by Amazon Nova — proactive health insights, trend analysis, and anomaly detection without you lifting a finger.',
+    title: 'Powered by Amazon Nova',
+    desc: 'Don\'t just see "H" or "L" next to a lab value. Nova explains what it means, tracks how it\'s changing, and flags what needs your attention.',
   },
   {
     icon: '👨‍👩‍👧‍👦',
     color: 'hsla(150, 60%, 45%, 0.1)',
     iconColor: 'var(--healing-green)',
-    title: 'Unified Family Hub',
-    desc: 'One dashboard for your entire family. Track each member\'s health records, observations, and follow-ups — all in one place.',
+    title: 'One Family, One Dashboard',
+    desc: 'Track reports, trends, and follow-ups for everyone — yourself, parents, spouse, kids. Health is a family affair.',
   },
   {
     icon: '📋',
     color: 'hsla(270, 70%, 65%, 0.1)',
     iconColor: 'hsl(270, 70%, 75%)',
-    title: 'Automated Report Parsing',
-    desc: 'Upload a lab report PDF. Nova OCR extracts, structures, and FHIR-codes the results automatically. No manual entry needed.',
+    title: 'Upload. Done. Understood.',
+    desc: 'Photograph a lab report. Nova extracts every test result, maps it to medical codes, and files it — in seconds.',
   },
   {
     icon: '🎙️',
     color: 'hsla(0, 80%, 65%, 0.1)',
     iconColor: 'var(--rose-alert)',
-    title: 'Voice Sanctuary',
-    desc: 'Ask your AI doctor anything — symptoms, medication interactions, lab results — via natural conversation powered by Amazon Bedrock Agents.',
+    title: 'Ask in Your Language',
+    desc: 'Ask Nova about your health in Hindi, Marathi, Tamil, or English. It answers in the language you think in.',
   },
 ];
 
 const steps = [
   {
     num: '1',
-    title: 'Create Your Sanctuary',
-    desc: 'Sign up with a family name. Your FHIR data record is created instantly on AWS.',
+    title: 'Create Your Family\'s Health Profile',
+    desc: 'One account for everyone. Mom\'s thyroid, Dad\'s sugar, your annual checkup — all in one place.',
   },
   {
     num: '2',
-    title: 'Add Family Members',
-    desc: 'Add each family member with their profile. Profiles are stored securely in DynamoDB.',
+    title: 'Upload Any Lab Report',
+    desc: 'PDF or photo — it doesn\'t matter. Nova AI reads it in seconds and structures every result.',
   },
   {
     num: '3',
-    title: 'Upload & Discover',
-    desc: 'Upload lab reports. Nova AI parses, analyzes, and surfaces proactive health insights.',
+    title: 'Get Insights That Matter',
+    desc: 'No more googling "is 110 glucose bad?" Nova spots trends, flags concerns, and reminds you when to retest.',
   },
 ];
 
@@ -121,11 +121,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp, theme, onT
             <span>⚡</span> Powered by Amazon Nova + FHIR HL7 R4
           </div>
           <h1 className="hero-headline">
-            Your Family's Health,<br />
-            <span className="gradient-text">Intelligently Guarded</span>
+            Every Lab Report.<br />
+            Every Family Member.<br />
+            <span className="gradient-text">One AI Companion.</span>
           </h1>
           <p className="hero-sub">
-            Chetana is a FHIR-native health platform that gives every family enterprise-grade medical records management, AI-powered insights, and end-to-end encryption — for free.
+            Most families have a drawer full of lab reports no one understands. Chetana turns them into structured health records with AI-powered insights you can actually act on.
           </p>
           <div className="hero-cta-group">
             <button className="btn-primary" style={{ fontSize: '1rem', padding: '1rem 2.25rem' }} onClick={() => setShowSignUp(true)}>
@@ -156,10 +157,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp, theme, onT
       <section className="landing-features">
         <div className="section-eyebrow">Why Chetana</div>
         <h2 className="section-title">
-          Healthcare records that meet<br />global standards
+          Healthcare intelligence,<br />not just record-keeping
         </h2>
         <p className="section-sub">
-          Built on AWS with FHIR HL7 R4, military-grade encryption, and Amazon Nova AI — the same infrastructure that powers the world's leading health systems.
+          Go beyond storing PDFs. Chetana gives your family structured data, trend tracking, and proactive AI insights.
         </p>
         <div className="features-grid">
           {features.map(f => (
@@ -199,18 +200,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp, theme, onT
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div className="section-eyebrow">Start Free Today</div>
           <h2 className="section-title" style={{ marginBottom: '1rem' }}>
-            Your family deserves<br />
-            <span style={{ color: 'var(--chetana-teal)' }}>world-class healthcare records</span>
+            Stop losing lab reports.<br />
+            <span style={{ color: 'var(--chetana-teal)' }}>Start understanding them.</span>
           </h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '2.5rem', fontSize: '1rem' }}>
-            No credit card. No installation. Instant FHIR record creation.
+            Upload your first report and see Chetana in action.
           </p>
           <button
             className="btn-primary"
             style={{ fontSize: '1rem', padding: '1rem 2.5rem' }}
             onClick={() => setShowSignUp(true)}
           >
-            Create Your Sanctuary →
+            Try It Now →
           </button>
         </div>
       </section>

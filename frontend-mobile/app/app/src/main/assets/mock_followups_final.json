@@ -1,0 +1,46 @@
+{
+  "familyId": "cf7eb826-c613-4850-9cc0-b960ebfd7f5b",
+  "total": 4,
+  "followUps": [
+    {
+      "followUpId": "fu-001",
+      "memberId": "d1dd1f42-7bd7-48aa-9e1e-1f146d600e46",
+      "memberName": "Rahul Sharma",
+      "testName": "HbA1c",
+      "loincCode": "4548-4",
+      "reason": "HbA1c is in the pre-diabetic range and trending upward. A follow-up test can help track this pattern.",
+      "suggestedDate": "2026-04-15",
+      "status": "pending"
+    },
+    {
+      "followUpId": "fu-002",
+      "memberId": "d1dd1f42-7bd7-48aa-9e1e-1f146d600e46",
+      "memberName": "Rahul Sharma",
+      "testName": "Vitamin D (25-OH)",
+      "loincCode": "1989-3",
+      "reason": "Vitamin D is below the reference range. A retest after supplementation can help assess progress.",
+      "suggestedDate": "2026-04-01",
+      "status": "pending"
+    },
+    {
+      "followUpId": "fu-003",
+      "memberId": "d1dd1f42-7bd7-48aa-9e1e-1f146d600e46",
+      "memberName": "Rahul Sharma",
+      "testName": "Lipid Panel",
+      "loincCode": "2093-3",
+      "reason": "LDL cholesterol is above the reference range. Monitoring your lipid panel over time is recommended.",
+      "suggestedDate": "2026-05-15",
+      "status": "pending"
+    },
+    {
+      "followUpId": "fu-004",
+      "memberId": "97154cfb-2e0c-4dda-b7df-697cff169cea",
+      "memberName": "Sunita",
+      "testName": "Hemoglobin",
+      "loincCode": "718-7",
+      "reason": "Routine monitoring recommended based on recent values.",
+      "suggestedDate": "2026-03-28",
+      "status": "accepted"
+    }
+  ]
+}

@@ -5,7 +5,7 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import ReactMarkdown from 'react-markdown';
 import RecordRTC from 'recordrtc';
 import { api, session as sessionHelper } from './services/api';
-import type { FamilyMember, Insight, Report, Observation, Session } from './services/api';
+import type { FamilyMember, Insight, Report, Observation, Session, Followup } from './services/api';
 import { LandingPage } from './components/LandingPage';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -20,16 +20,18 @@ const HealthTimeline = ({ observations }: { observations: Observation[] }) => {
   
   const getY = (val: number) => 130 - ((val - minVal) / range) * 110;
 
-  const points = observations.length > 1 
-    ? observations.map((o, i) => `${(i / (observations.length - 1)) * 1000} ${getY(o.value)}`).join(' ')
-    : `0 ${getY(observations[0].value)} 1000 ${getY(observations[0].value)}`;
+  const sortedObs = [...observations].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  
+  const points = sortedObs.length > 1 
+    ? sortedObs.map((o, i) => `${(i / (sortedObs.length - 1)) * 1000} ${getY(o.value)}`).join(' ')
+    : `0 ${getY(sortedObs[0].value)} 1000 ${getY(sortedObs[0].value)}`;
 
   return (
     <div style={{ position: 'relative', height: '180px', marginTop: '1.5rem' }}>
       <div style={{ position: 'absolute', top: '30px', left: 0, right: 0, height: '50px', background: 'hsla(150, 60%, 45%, 0.03)', borderRadius: '12px', border: '1px dashed hsla(150, 60%, 45%, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: '0.65rem', color: 'var(--healing-green)', opacity: 0.6, fontWeight: 700, letterSpacing: '0.15em' }}>NOMINAL RANGE</span>
       </div>
-      <svg width="100%" height="150" viewBox="0 0 1000 150" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+      <svg width="100%" height="150" viewBox="-10 -10 1020 170" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
         <defs>
           <linearGradient id="line-grad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="var(--chetana-teal)" stopOpacity="0.4" />
@@ -44,24 +46,26 @@ const HealthTimeline = ({ observations }: { observations: Observation[] }) => {
           <path d={`M 0 150 L ${points} L 1000 150 Z`} fill="url(#area-grad)" />
         )}
         <path d={`M ${points}`} fill="none" stroke="url(#line-grad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        {observations.map((o, i) => (
+        {sortedObs.map((o, i) => (
           <circle 
             key={o.id} 
-            cx={observations.length > 1 ? (i / (observations.length - 1)) * 1000 : 500} 
+            cx={sortedObs.length > 1 ? (i / (sortedObs.length - 1)) * 1000 : 500} 
             cy={getY(o.value)} 
-            r={i === observations.length - 1 ? 7 : 4} 
+            r={i === sortedObs.length - 1 ? 7 : 4} 
             fill="var(--chetana-teal)" 
-            className={(i === observations.length - 1 && observations.length > 1) ? 'pulse' : ''} 
           />
         ))}
       </svg>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-        {observations.length > 1 ? observations.map((o, i) => (
-          <span key={o.id} style={{ fontWeight: i === observations.length - 1 ? 700 : 400, color: i === observations.length - 1 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-            {o.date.split('T')[0].split('-').slice(1).join('/')}
-          </span>
-        )) : (
-          <span style={{ width: '100%', textAlign: 'center' }}>Captured on {observations[0].date.split('T')[0]}</span>
+        {sortedObs.length > 1 ? sortedObs.map((o, i) => {
+          const isLatest = i === sortedObs.length - 1;
+          return (
+            <span key={o.id} style={{ fontWeight: isLatest ? 700 : 400, color: isLatest ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+              {o.date.split('T')[0].split('-').slice(1).join('/')}
+            </span>
+          );
+        }) : (
+          <span style={{ width: '100%', textAlign: 'center' }}>Captured on {sortedObs[0].date.split('T')[0]}</span>
         )}
       </div>
     </div>
@@ -115,6 +119,40 @@ const InsightCard = ({ insight }: { insight: Insight }) => (
     </div>
   </div>
 );
+
+const FollowupsList = ({ followups, onStatusUpdate }: { followups: Followup[], onStatusUpdate: (id: string, status: 'pending' | 'completed' | 'dismissed') => void }) => {
+  if (followups.length === 0) {
+    return <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontStyle: 'italic', padding: '1rem 0' }}>No pending follow-ups. You're all caught up!</div>;
+  }
+  
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {followups.map(f => (
+        <div key={f.id} className="shimmer-container" style={{ padding: '1.25rem', borderRadius: '16px', background: 'hsla(0,0%,100%,0.02)', border: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="shimmer-overlay" />
+          <div style={{ flex: 1 }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+               <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{f.testName}</span>
+               {f.status === 'pending' && <span style={{ padding: '0.15rem 0.5rem', background: 'var(--solar-amber)', color: '#000', fontSize: '0.65rem', borderRadius: '8px', fontWeight: 800, textTransform: 'uppercase' }}>ACTION NEEDED</span>}
+               {f.status === 'completed' && <span style={{ padding: '0.15rem 0.5rem', background: 'var(--healing-green)', color: '#fff', fontSize: '0.65rem', borderRadius: '8px', fontWeight: 800, textTransform: 'uppercase' }}>COMPLETED</span>}
+             </div>
+             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>{f.reason}</div>
+             <div style={{ fontSize: '0.75rem', color: 'var(--chetana-teal)', fontWeight: 600 }}>Suggested Date: {f.suggestedDate}</div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
+             {f.status === 'pending' && (
+               <>
+                 <button className="btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} onClick={() => onStatusUpdate(f.id, 'completed')}>Mark Complete</button>
+                 <button className="btn-ghost" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} onClick={() => onStatusUpdate(f.id, 'dismissed')}>Dismiss</button>
+               </>
+             )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 
 
 const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language, setLanguage, onClose, isGlobal = false }: { familyId: string; memberId: string; reportId?: string; initialQuery?: string; language: string; setLanguage: (l: string) => void; onClose: () => void; isGlobal?: boolean }) => {
@@ -219,7 +257,7 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </div>
             <div>
-               <div style={{ fontSize: '0.9375rem', fontWeight: 900 }}>{isGlobal ? "Voice Sanctuary" : "Nova Assistant"}</div>
+               <div style={{ fontSize: '0.9375rem', fontWeight: 900 }}>Ask Nova</div>
                <select 
                  value={language} 
                  onChange={(e) => setLanguage(e.target.value)}
@@ -250,7 +288,7 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
       <div className="chat-messages" ref={scrollRef} style={isGlobal ? { padding: '1.5rem 2rem' } : {}}>
          {chatLog.length === 0 && (
            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-              <p>{isGlobal ? "Welcome to the Voice Sanctuary. You can speak or type to ask Nova anything about your family's overall health records, trends, and history." : "Welcome to Nova. You can ask me anything about this report or your general health trends."}</p>
+              <p>Welcome to Nova. You can ask me anything about this report or your general health trends.</p>
            </div>
          )}
          {chatLog.map((m, i) => {
@@ -267,10 +305,14 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
                     <audio src={`data:audio/mp3;base64,${m.responseAudioBase64}`} controls autoPlay style={{ width: '100%', height: '36px', outline: 'none' }} />
                   </div>
                 )}
-                <div className="markdown-body">
-                  <ReactMarkdown>{parts[0]}</ReactMarkdown>
-                </div>
-                {parts.length > 1 && (
+                 <div className="markdown-body">
+                   {m.role === 'assistant' && i === chatLog.length - 1 ? (
+                     <Typewriter text={parts[0]} delay={5} />
+                   ) : (
+                     <ReactMarkdown>{parts[0]}</ReactMarkdown>
+                   )}
+                 </div>
+                 {parts.length > 1 && (
                   <div style={{ 
                     marginTop: '0.75rem', 
                     paddingTop: '0.75rem', 
@@ -365,12 +407,17 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
 
 const ReportDetailView = ({ report, onBack, isChatOpen, setIsChatOpen, language, setLanguage }: { report: Report; onBack: () => void; isChatOpen: boolean; setIsChatOpen: (o: boolean) => void; language: string; setLanguage: (l: string) => void }) => {
   const [observations, setObservations] = useState<Observation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { appSession, selectedMember } = (window as any).appGlobals;
   const [initialChatQuery, setInitialChatQuery] = useState<string | undefined>();
 
   useEffect(() => {
+    setIsLoading(true);
     api.getObservations(appSession.familyId, selectedMember.id)
-       .then(all => setObservations(all.filter(o => o.reportId === report.reportId)));
+       .then(all => {
+          setObservations(all.filter(o => o.reportId === report.reportId));
+          setIsLoading(false);
+       });
   }, [report.reportId]);
 
   const handleRowClick = (name: string) => {
@@ -387,7 +434,7 @@ const ReportDetailView = ({ report, onBack, isChatOpen, setIsChatOpen, language,
              Universal Dashboard
           </button>
           {!isChatOpen && (
-            <button className="btn-primary" onClick={() => setIsChatOpen(true)} style={{ padding: '0.75rem 1.5rem', borderRadius: '12px' }}>
+            <button className="btn-primary" onClick={() => setIsChatOpen(true)} style={{ padding: '0.75rem 1.5rem' }}>
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5" style={{ marginRight: '0.5rem' }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                Speak to Nova
             </button>
@@ -399,7 +446,14 @@ const ReportDetailView = ({ report, onBack, isChatOpen, setIsChatOpen, language,
            <p style={{ color: 'var(--text-secondary)', fontSize: '1.125rem' }}>Clinical Data Analyzed on {report.date}</p>
         </div>
 
-        <LabResultsTable observations={observations} onRowClick={handleRowClick} />
+        {isLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+             <div className="status-spinner" style={{ width: '40px', height: '40px', borderColor: 'var(--chetana-teal) transparent transparent transparent' }}></div>
+             <div style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Deciphering Medical Data...</div>
+          </div>
+        ) : (
+          <LabResultsTable observations={observations} onRowClick={handleRowClick} />
+        )}
       </div>
       
       {isChatOpen && (
@@ -609,23 +663,34 @@ function App() {
   const [isChatOpen, setIsChatOpen]   = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [followups, setFollowups]     = useState<Followup[]>([]);
 
-  const [currentView, setCurrentView] = useState<'dashboard' | 'report-detail'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'report-detail' | 'followups' | 'insights'>('dashboard');
   const [activeReport, setActiveReport] = useState<Report | null>(null);
+  const [isLoadingDash, setIsLoadingDash] = useState(false);
   const [selectedTrendName, setSelectedTrendName] = useState<string>('');
   const [chatLanguage, setChatLanguage] = useState<string>('English');
 
   useEffect(() => {
     if (observations.length > 0 && !selectedTrendName) {
-      setSelectedTrendName(observations.find(o => o.isAbnormal)?.name || observations[0].name);
+      const hemoglobin = observations.find(o => o.name.toLowerCase().includes('hemoglobin') || o.loincCode === '718-7');
+      if (hemoglobin) {
+        setSelectedTrendName(hemoglobin.name);
+      } else {
+        setSelectedTrendName(observations.find(o => o.isAbnormal)?.name || observations[0].name);
+      }
     }
   }, [observations]);
 
   const refreshDashboard = () => {
     if (appSession && selectedMember) {
-      api.getInsights(appSession.familyId, selectedMember.id).then(setInsights);
-      api.getReports(appSession.familyId, selectedMember.id).then(setReports);
-      api.getObservations(appSession.familyId, selectedMember.id).then(setObservations);
+      setIsLoadingDash(true);
+      Promise.all([
+        api.getInsights(appSession.familyId, selectedMember.id).then(setInsights),
+        api.getReports(appSession.familyId, selectedMember.id).then(setReports),
+        api.getObservations(appSession.familyId, selectedMember.id).then(setObservations),
+        api.getFollowups(appSession.familyId, selectedMember.id).then(setFollowups)
+      ]).finally(() => setIsLoadingDash(false));
     }
   };
 
@@ -662,9 +727,13 @@ function App() {
     const { familyId } = appSession;
     
     // Initial fetch
-    api.getReports(familyId, selectedMember.id).then(setReports).catch(() => setError('Reports sync failed.'));
-    api.getObservations(familyId, selectedMember.id).then(setObservations).catch(() => setError('Observations sync failed.'));
-    api.getInsights(familyId, selectedMember.id).then(setInsights).catch(() => setError('Insights sync failed.'));
+    setIsLoadingDash(true);
+    Promise.all([
+      api.getReports(familyId, selectedMember.id).then(setReports).catch(() => setError('Reports sync failed.')),
+      api.getObservations(familyId, selectedMember.id).then(setObservations).catch(() => setError('Observations sync failed.')),
+      api.getInsights(familyId, selectedMember.id).then(setInsights).catch(() => setError('Insights sync failed.')),
+      api.getFollowups(familyId, selectedMember.id).then(setFollowups).catch(() => setError('Followups sync failed.'))
+    ]).finally(() => setIsLoadingDash(false));
 
     // Poll if there's a processing report
     const hasProcessingReports = reports.some(r => r.status === 'Processing');
@@ -703,6 +772,7 @@ function App() {
     setObservations([]);
     setInsights([]);
     setReports([]);
+    setFollowups([]);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -728,9 +798,13 @@ function App() {
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
-  const NavItem = ({ icon, label, active = false, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }) => (
+  const NavItem = ({ icon, label, active = false, onClick, badge }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void, badge?: number }) => (
     <a href="#" className={`nav-item ${active ? 'active' : ''}`} onClick={e => { e.preventDefault(); onClick?.(); }}>
-      {icon} <span>{label}</span>
+      {icon} 
+      <span style={{ flex: 1 }}>{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span style={{ background: 'var(--solar-amber)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 800 }}>{badge}</span>
+      )}
     </a>
   );
 
@@ -751,10 +825,11 @@ function App() {
         </div>
 
         <nav className="nav-links">
-          <NavItem label="Dashboard" active icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>} />
-          <NavItem label="Family Hub" onClick={() => document.querySelector('.family-hub')?.scrollIntoView({ behavior: 'smooth' })} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>} />
-          <NavItem label="Insights" onClick={() => document.querySelector('.insights-card')?.scrollIntoView({ behavior: 'smooth' })} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>} />
-          <NavItem label="Voice Sanctuary" onClick={() => setIsVoiceOpen(true)} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>} />
+          <NavItem label="Dashboard" active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>} />
+          <NavItem label="Follow-ups" active={currentView === 'followups'} onClick={() => setCurrentView('followups')} badge={followups.filter(f => f.status === 'pending').length} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/></svg>} />
+          <NavItem label="Family Hub" onClick={() => { setCurrentView('dashboard'); setTimeout(() => document.querySelector('.family-hub')?.scrollIntoView({ behavior: 'smooth' }), 100); }} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>} />
+          <NavItem label="Insights" active={currentView === 'insights'} onClick={() => setCurrentView('insights')} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>} />
+          <NavItem label="Ask Nova" onClick={() => setIsVoiceOpen(true)} icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>} />
         </nav>
 
         {/* Bottom controls */}
@@ -789,7 +864,7 @@ function App() {
             <>
               <div className="header-top">
                 <div>
-                  <h1 style={{ fontSize: '2.5rem', marginBottom: '0.4rem', fontWeight: 900 }}>Welcome back, {appSession.familyName}</h1>
+                  <h1 style={{ fontSize: '2.5rem', marginBottom: '0.4rem', fontWeight: 900, color: 'var(--text-primary)' }}>Welcome back, {appSession.familyName}</h1>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '1.125rem' }}>Your family sanctuary is synced and secure.</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -798,7 +873,13 @@ function App() {
                 </div>
               </div>
               
-              <div className="family-hub" style={{ marginTop: '2.5rem', display: 'flex', gap: '1.25rem', overflowX: 'auto', padding: '1.5rem 2rem' }}>
+              {isLoadingDash ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
+                  <div className="status-spinner" style={{ width: '40px', height: '40px', borderColor: 'var(--chetana-teal) transparent transparent transparent' }}></div>
+                  <div style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Loading Dashboard Data...</div>
+                </div>
+              ) : (
+                <div className="family-hub" style={{ marginTop: '2.5rem', display: 'flex', gap: '1.25rem', overflowX: 'auto', padding: '1.5rem 2rem' }}>
                 {members.map(m => (
                   <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }} onClick={() => setSelectedMember(m)}>
                     <div 
@@ -827,6 +908,7 @@ function App() {
                   <span style={{ fontSize: '1.5rem' }}>+</span>
                 </div>
               </div>
+              )}
             </>
           )}
         </header>
@@ -842,6 +924,53 @@ function App() {
                  language={chatLanguage}
                  setLanguage={setChatLanguage}
                />
+            </div>
+          ) : currentView === 'followups' ? (
+            <div style={{ gridColumn: 'span 12' }}>
+              <section className="glass-card" style={{ padding: '2rem' }}>
+                <div className="card-title" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/></svg>
+                  Actionable Follow-ups
+                </div>
+                <FollowupsList 
+                  followups={followups} 
+                  onStatusUpdate={async (id, status) => {
+                    if (appSession && selectedMember) {
+                      await api.updateFollowup(appSession.familyId, selectedMember.id, id, { status });
+                      api.getFollowups(appSession.familyId, selectedMember.id).then(setFollowups);
+                    }
+                  }} 
+                />
+              </section>
+            </div>
+          ) : currentView === 'insights' ? (
+            <div style={{ gridColumn: 'span 12' }}>
+              <section className="glass-card" style={{ padding: '2rem' }}>
+                <div className="card-title" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
+                    Nova Insights History
+                  </div>
+                  <button 
+                    className="icon-btn" 
+                    title="Regenerate Insights" 
+                    onClick={async () => {
+                      try {
+                        await api.generateInsights(appSession.familyId, selectedMember!.id);
+                        refreshDashboard();
+                      } catch (e) { setError('Failed to refresh insights.'); }
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {[...insights].sort((a, b) => new Date(b.generatedAt || 0).getTime() - new Date(a.generatedAt || 0).getTime()).map(i => (
+                    <InsightCard key={i.insightId} insight={i} />
+                  ))}
+                  {insights.length === 0 && <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontStyle: 'italic', padding: '1rem 0', textAlign: 'center' }}>No insights available yet. Please upload reports.</div>}
+                </div>
+              </section>
             </div>
           ) : (
             <>
@@ -875,22 +1004,21 @@ function App() {
                   const currentName = selectedTrendName || observations.find(o => o.isAbnormal)?.name || observations[0]?.name;
                   const filtered = observations.filter(o => o.name === currentName);
                   
-                  if (filtered.length >= 3) {
+                  if (filtered.length >= 1) {
                     return (
                       <div key={currentName}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                          <span style={{ fontSize: '2.5rem', fontWeight: 900 }}>{filtered[filtered.length - 1].value}</span>
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>{filtered[filtered.length - 1].unit}</span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginLeft: '0.5rem' }}>{filtered[filtered.length - 1].name}</span>
+                          <span style={{ fontSize: '2.5rem', fontWeight: 900 }}>{filtered.sort((a,b)=>new Date(b.date).getTime() - new Date(a.date).getTime())[0].value}</span>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>{filtered[0].unit}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginLeft: '0.5rem' }}>{filtered[0].name}</span>
                         </div>
-                        <HealthTimeline observations={filtered} />
+                        <HealthTimeline observations={filtered.sort((a,b)=>new Date(a.date).getTime() - new Date(b.date).getTime())} />
                       </div>
                     );
                   }
                   return (
                     <div key="no-data" style={{ padding: '2rem 0', textAlign: 'center' }}>
-                      <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 800 }}>INSUFFICIENT HISTORICAL DATA</p>
-                      <p style={{ marginTop: '0.75rem', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>Trend analysis requires 3 records for "{currentName || 'this test'}".</p>
+                      <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 800 }}>NO OBSERVATIONS</p>
                     </div>
                   );
                 })()}
@@ -900,7 +1028,7 @@ function App() {
                 <div className="card-title" style={{ justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                    Nova AI Agent
+                    Nova Insights
                   </div>
                   <button 
                     className="icon-btn" 
@@ -916,8 +1044,13 @@ function App() {
                   </button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  {insights.slice(0, 2).map(i => <InsightCard key={i.insightId} insight={i} />)}
+                  {[...insights].sort((a, b) => new Date(b.generatedAt || 0).getTime() - new Date(a.generatedAt || 0).getTime()).slice(0, 2).map(i => <InsightCard key={i.insightId} insight={i} />)}
                   {insights.length === 0 && <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontStyle: 'italic', padding: '1rem 0' }}>Nova is waiting for your reports to begin analysis.</div>}
+                  {insights.length > 2 && (
+                    <button onClick={() => setCurrentView('insights')} style={{ background: 'none', border: 'none', color: 'var(--chetana-teal)', fontSize: '0.8125rem', fontWeight: 800, cursor: 'pointer', alignSelf: 'flex-start', padding: '0.5rem 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      View All Insights →
+                    </button>
+                  )}
                 </div>
               </section>
 
@@ -934,7 +1067,7 @@ function App() {
                   </label>
                 </div>
                 <div className="reports-grid">
-                  {reports.map(r => (
+                  {[...reports].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map(r => (
                     <ReportCard 
                       key={r.reportId} 
                       report={r} 

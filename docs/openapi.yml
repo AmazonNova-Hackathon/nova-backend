@@ -272,6 +272,68 @@ paths:
         '200':
           description: Insights generated.
 
+  /families/{familyId}/members/{memberId}/followups:
+    get:
+      summary: Retrieve follow-up recommendations for a specific member.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [pending, all]
+            default: pending
+          description: Filter follow-ups by status. Use 'all' to retrieve both pending and completed.
+      responses:
+        '200':
+          description: List of follow-ups.
+
+  /families/{familyId}/members/{memberId}/followups/{followUpId}:
+    patch:
+      summary: Update the status of a specific follow-up.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: familyId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: followUpId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [suggestedDate]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, completed, dismissed]
+                suggestedDate:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Follow-up updated successfully.
+
   /families/{familyId}/members/{memberId}/chat:
     post:
       summary: Chat with the Bedrock Agent for a specific member.

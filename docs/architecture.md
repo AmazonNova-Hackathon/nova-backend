@@ -4,42 +4,102 @@ MediAgent is built on a serverless, event-driven architecture designed for high-
 
 ## System Topology
 
+![Chetana AWS Architecture](aws_architecture.png)
+
+### Detailed Service Map
+
 ```mermaid
-graph TD
-    User((User/Mobile))
-    CF[CloudFront]
-    APIGW[API Gateway]
-    S3[(Amazon S3)]
-    DDB[(Amazon DynamoDB)]
-    ExtractLambda[ExtractReportFunction]
-    InsightLambda[InsightsEngineFunction]
-    ChatLambda[AgentChatFunction]
-    Nova[Amazon Bedrock: Nova]
-    Agent[Bedrock Agent: chetana-health-agent]
-    AG1[ActionHealthDataFunction]
-    AG2[ActionTrendsFunction]
-    AG3[ActionFamilyFunction]
+graph TB
+    subgraph Clients["🖥️ Clients"]
+        Web["Web App<br/>(React + Vite)"]
+        Android["Android App<br/>(Kotlin)"]
+    end
 
-    User -- HTTPS --> CF
-    CF -- /api/* --> APIGW
-    CF -- /* --> S3
+    subgraph Edge["☁️ AWS Edge"]
+        CF["CloudFront<br/>CDN Distribution"]
+        S3Web[("S3<br/>Frontend Assets")]
+        APIGW["API Gateway<br/>REST (prod stage)"]
+    end
 
-    User -- 1. Upload Binary --> S3
-    APIGW -- 2. Handle --> ExtractLambda
-    ExtractLambda -- 3. Fetch --> S3
-    ExtractLambda -- 4. Analyze --> Nova
-    ExtractLambda -- 5. Store --> DDB
+    subgraph Compute["⚡ AWS Lambda Functions"]
+        L1["ExtractReportFunction<br/>Report Upload + Nova Extraction"]
+        L2["AgentChatFunction<br/>Bedrock Agent Invocation"]
+        L3["InsightsEngineFunction<br/>Proactive Insights + Follow-ups"]
+        L5["FamilyManagementFunction<br/>Family & Member CRUD"]
+    end
 
-    APIGW -- Chat POST --> ChatLambda
-    ChatLambda -- invoke_agent --> Agent
-    Agent -- getObservations/getReports --> AG1
-    Agent -- computeTrend/compareMembers --> AG2
-    Agent -- getFamilyMembers --> AG3
-    AG1 & AG2 & AG3 --> DDB
+    subgraph Bedrock["🧠 Amazon Bedrock"]
+        NovaPro["Nova Pro 1.0<br/>Reasoning + Extraction"]
+        NovaMicro["Nova Micro<br/>Translations"]
+        
+        subgraph Agent["Bedrock Agent: chetana-health-agent"]
+            AG1["Action Group:<br/>HealthDataActions"]
+            AG2["Action Group:<br/>TrendActions"]
+            AG3["Action Group:<br/>FamilyActions"]
+            KB["Knowledge Base<br/>Clinical Guidelines"]
+            GR["Guardrails<br/>SaMD Safety"]
+        end
+    end
 
-    InsightLambda -- Proactive Cron --> DDB
-    InsightLambda -- Generate Insights --> Nova
+    subgraph Storage["💾 Storage"]
+        DDB[("DynamoDB<br/>Single Table<br/>(FHIR Data)")]
+        S3Reports[("S3<br/>Report Images<br/>AES-256")]
+    end
+
+    EB["EventBridge<br/>Daily Cron Schedule"]
+
+    %% Client → Edge
+    Web --> CF
+    Android --> CF
+    CF -->|"Static Assets"| S3Web
+    CF -->|"/api/*"| APIGW
+
+    %% API Gateway → Lambdas
+    APIGW --> L1
+    APIGW --> L2
+    APIGW --> L5
+    APIGW --> L3
+
+    %% Lambda → Bedrock
+    L1 -->|"Multimodal Extraction"| NovaPro
+    L2 -->|"invoke_agent()"| Agent
+    L3 -->|"Insight Generation"| NovaPro
+    L3 -->|"Translate"| NovaMicro
+
+    %% Agent → Action Groups → DynamoDB
+    AG1 --> DDB
+    AG2 --> DDB
+    AG3 --> DDB
+
+    %% Lambda → Storage
+    L1 -->|"Store FHIR"| DDB
+    L1 -->|"Fetch Image"| S3Reports
+    L5 --> DDB
+    L3 --> DDB
+
+    %% Upload flow
+    Web -->|"Direct PUT<br/>(Presigned URL)"| S3Reports
+    Android -->|"Direct PUT<br/>(Presigned URL)"| S3Reports
+
+    %% EventBridge
+    EB -->|"Scheduled Trigger"| L3
+
+    %% Styles
+    classDef client fill:#232F3E,stroke:#FF9900,color:#fff,stroke-width:2px
+    classDef edge fill:#1B2631,stroke:#FF9900,color:#fff,stroke-width:2px
+    classDef lambda fill:#D35400,stroke:#FF9900,color:#fff,stroke-width:2px
+    classDef bedrock fill:#2E4053,stroke:#5DADE2,color:#fff,stroke-width:2px
+    classDef storage fill:#1A5276,stroke:#FF9900,color:#fff,stroke-width:2px
+    classDef event fill:#6C3483,stroke:#FF9900,color:#fff,stroke-width:2px
+
+    class Web,Android client
+    class CF,S3Web,APIGW edge
+    class L1,L2,L3,L5 lambda
+    class NovaPro,NovaMicro,AG1,AG2,AG3,KB,GR bedrock
+    class DDB,S3Reports storage
+    class EB event
 ```
+
 
 ---
 

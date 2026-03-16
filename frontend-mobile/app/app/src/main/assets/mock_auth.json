@@ -1,0 +1,16 @@
+{
+  "validCredentials": {
+    "email": "demo@chetana.health",
+    "password": "demo1234"
+  },
+  "loginSuccessResponse": {
+    "userId": "user-demo-001",
+    "email": "demo@chetana.health",
+    "familyId": "cf7eb826-c613-4850-9cc0-b960ebfd7f5b"
+  },
+  "otpSuccessResponse": {
+    "userId": "user-demo-001",
+    "email": "demo@chetana.health",
+    "familyId": "cf7eb826-c613-4850-9cc0-b960ebfd7f5b"
+  }
+}

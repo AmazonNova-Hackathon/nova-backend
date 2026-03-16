@@ -251,6 +251,41 @@
               "path": ["families", "{{familyId}}", "members", "{{memberId}}", "insights"]
             }
           }
+        },
+        {
+          "name": "List Followups",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-api-key", "value": "{{api_key}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/families/{{familyId}}/members/{{memberId}}/followups?status=all",
+              "host": ["{{base_url}}"],
+              "path": ["families", "{{familyId}}", "members", "{{memberId}}", "followups"],
+              "query": [
+                { "key": "status", "value": "all" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Followup Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"completed\",\n    \"suggestedDate\": \"2024-05-10\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/families/{{familyId}}/members/{{memberId}}/followups/{{followUpId}}",
+              "host": ["{{base_url}}"],
+              "path": ["families", "{{familyId}}", "members", "{{memberId}}", "followups", "{{followUpId}}"]
+            }
+          }
         }
       ]
     },
