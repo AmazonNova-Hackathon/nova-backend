@@ -10,6 +10,7 @@ dispatch and multi-turn memory. This service simply:
 """
 import uuid
 import os
+import base64
 from botocore.config import Config
 from botocore.exceptions import ClientError
 import boto3
@@ -27,6 +28,11 @@ BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 retry_config = Config(retries={"max_attempts": 5, "mode": "standard"})
 agent_runtime = boto3.client(
     "bedrock-agent-runtime",
+    region_name=BEDROCK_REGION,
+    config=retry_config,
+)
+polly_client = boto3.client(
+    "polly",
     region_name=BEDROCK_REGION,
     config=retry_config,
 )
@@ -131,7 +137,26 @@ def process_chat(raw_payload: dict) -> ChatResponse:
         logger.exception("Unexpected non-AWS error invoking Bedrock Agent")
         reply = "I'm having trouble processing your request right now. Please try again later."
 
+    audio_b64 = ""
+    # Process audio if requested
+    if req.responseFormat in ["audio", "both"] and reply.strip():
+        try:
+            # basic voice mapping based on language
+            voice_id = "Aditi" if req.language in ["Hindi"] else "Joanna"
+            resp = polly_client.synthesize_speech(
+                Text=reply[:3000],  # standard polly length limit
+                OutputFormat="mp3",
+                VoiceId=voice_id,
+                Engine="standard"
+            )
+            audio_stream = resp.get("AudioStream")
+            if audio_stream:
+                audio_b64 = base64.b64encode(audio_stream.read()).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to synthesize speech: {str(e)}")
+
     return ChatResponse(
         reply=reply,
         sessionId=session_id,
+        audioBase64=audio_b64
     )

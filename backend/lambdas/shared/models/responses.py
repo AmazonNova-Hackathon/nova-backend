@@ -28,9 +28,10 @@ class ErrorResponse(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    sessionId: str = ""  # Client must echo this back on the next turn to continue the session
+    sessionId: str = ""
     referencedReports: list[str] = []
     referencedObservations: list[str] = []
+    audioBase64: str = ""
     disclaimer: str = (
         "MediAgent does not provide medical advice. Always consult a licensed healthcare provider."
     )

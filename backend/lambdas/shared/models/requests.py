@@ -17,9 +17,7 @@ class ChatRequest(BaseModel):
     familyId: str
     memberId: str
     message: str
-    # sessionId: empty string = start new agent conversation; non-empty = continue existing session.
-    # The Bedrock Agent holds multi-turn conversation history server-side via sessionId,
-    # so conversationHistory is no longer needed on the client side.
     sessionId: str = ""
     reportId: str = ""
     language: str = "English"
+    responseFormat: Literal["text", "audio", "both"] = "text"

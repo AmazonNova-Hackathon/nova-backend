@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
+import 'regenerator-runtime/runtime';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import ReactMarkdown from 'react-markdown';
+import RecordRTC from 'recordrtc';
 import { api, session as sessionHelper } from './services/api';
 import type { FamilyMember, Insight, Report, Observation, Session } from './services/api';
 import { LandingPage } from './components/LandingPage';
@@ -113,14 +117,20 @@ const InsightCard = ({ insight }: { insight: Insight }) => (
 );
 
 
-const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language, setLanguage, onClose }: { familyId: string; memberId: string; reportId?: string; initialQuery?: string; language: string; setLanguage: (l: string) => void; onClose: () => void }) => {
+const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language, setLanguage, onClose, isGlobal = false }: { familyId: string; memberId: string; reportId?: string; initialQuery?: string; language: string; setLanguage: (l: string) => void; onClose: () => void; isGlobal?: boolean }) => {
   const [message, setMessage] = useState('');
-  const [chatLog, setChatLog] = useState<{ role: string; content: string }[]>([]);
+  const [chatLog, setChatLog] = useState<{ role: string; content: string; audioUrl?: string; responseAudioBase64?: string }[]>([]);
   const [sessionId, setSessionId] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [responseFormat, setResponseFormat] = useState<'text' | 'audio' | 'both'>('text');
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const lastProcessedQuery = useRef<string | null>(null);
+
+  // Voice Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [rtcRecorder, setRtcRecorder] = useState<RecordRTC | null>(null);
+  const [previewAudio, setPreviewAudio] = useState<string | null>(null);
+  const { transcript, resetTranscript, listening, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
   useEffect(() => {
     if (initialQuery && initialQuery !== lastProcessedQuery.current) {
@@ -133,19 +143,67 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [chatLog, isTyping]);
 
+  useEffect(() => {
+    if (listening && transcript) {
+      setMessage(transcript);
+    }
+  }, [transcript, listening]);
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (rtcRecorder) {
+        rtcRecorder.stopRecording(() => {
+          const blob = rtcRecorder.getBlob();
+          setPreviewAudio(URL.createObjectURL(blob));
+          const stream = (rtcRecorder as any).getInternalRecorder()?.getInternalRecorder?.()?.stream || (rtcRecorder as any).getInternalRecorder?.()?.stream;
+          if (stream) stream.getTracks().forEach((t: any) => t.stop());
+        });
+      }
+      SpeechRecognition.stopListening();
+      setIsRecording(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new RecordRTC(stream, {
+          type: 'audio',
+          mimeType: 'audio/webm',
+          disableLogs: true
+        });
+        recorder.startRecording();
+        setRtcRecorder(recorder);
+        setIsRecording(true);
+        resetTranscript();
+        setMessage('');
+        SpeechRecognition.startListening({ continuous: true });
+      } catch (e) {
+        console.error("Mic access denied", e);
+        alert("Microphone access is required for voice chat.");
+      }
+    }
+  };
+
+  const cancelRecording = () => {
+    setPreviewAudio(null);
+    setMessage('');
+    resetTranscript();
+    setRtcRecorder(null);
+  };
+
   const handleSend = async (overriddenMsg?: string) => {
     const textToSend = overriddenMsg || message;
     if (!textToSend.trim() || isTyping) return;
 
-    const userMsg = { role: 'user', content: textToSend };
+    const userMsg = { role: 'user', content: textToSend, audioUrl: previewAudio || undefined };
     setChatLog(prev => [...prev, userMsg]);
     setMessage('');
+    setPreviewAudio(null);
+    resetTranscript();
     setIsTyping(true);
 
     try {
-      const response = await api.chat(familyId, memberId, textToSend, sessionId, reportId, language);
+      const response = await api.chat(familyId, memberId, textToSend, sessionId, reportId, language, responseFormat);
       setSessionId(response.sessionId);
-      setChatLog(prev => [...prev, { role: 'assistant', content: response.message }]);
+      setChatLog(prev => [...prev, { role: 'assistant', content: response.message, responseAudioBase64: response.audioBase64 }]);
     } catch (err) {
       setChatLog(prev => [...prev, { role: 'assistant', content: 'Forgive me, I encountered a connection issue. Please try again.' }]);
     } finally {
@@ -154,14 +212,14 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
   };
 
   return (
-    <div className="chat-panel-sidebar">
-      <div className="chat-header">
+    <div className={isGlobal ? "glass-card" : "chat-panel-sidebar"} style={isGlobal ? { width: '100%', maxWidth: '700px', height: '85vh', display: 'flex', flexDirection: 'column' } : {}}>
+      <div className="chat-header" style={isGlobal ? { padding: '2rem 2rem 1.5rem', borderBottom: '1px solid hsla(0,0%,100%,0.05)' } : {}}>
          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--chetana-teal)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </div>
             <div>
-               <div style={{ fontSize: '0.9375rem', fontWeight: 900 }}>Nova Assistant</div>
+               <div style={{ fontSize: '0.9375rem', fontWeight: 900 }}>{isGlobal ? "Voice Sanctuary" : "Nova Assistant"}</div>
                <select 
                  value={language} 
                  onChange={(e) => setLanguage(e.target.value)}
@@ -172,6 +230,16 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
                  <option value="Marathi">MARATHI • मराठी</option>
                  <option value="Tamil">TAMIL • தமிழ்</option>
                </select>
+               <span style={{ color: 'var(--glass-border)', margin: '0 0.5rem' }}>|</span>
+               <select 
+                 value={responseFormat} 
+                 onChange={(e) => setResponseFormat(e.target.value as any)}
+                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 600, padding: 0, cursor: 'pointer', appearance: 'none', outline: 'none' }}
+               >
+                 <option value="text">TEXT ONLY</option>
+                 <option value="both">TEXT + AUDIO</option>
+                 <option value="audio">AUDIO ONLY</option>
+               </select>
             </div>
          </div>
          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '8px' }}>
@@ -179,46 +247,117 @@ const ChetanaAssistant = ({ familyId, memberId, reportId, initialQuery, language
          </button>
       </div>
       
-      <div className="chat-messages" ref={scrollRef}>
+      <div className="chat-messages" ref={scrollRef} style={isGlobal ? { padding: '1.5rem 2rem' } : {}}>
          {chatLog.length === 0 && (
            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-              <p>Welcome to Nova. You can ask me anything about this report or your general health trends.</p>
+              <p>{isGlobal ? "Welcome to the Voice Sanctuary. You can speak or type to ask Nova anything about your family's overall health records, trends, and history." : "Welcome to Nova. You can ask me anything about this report or your general health trends."}</p>
            </div>
          )}
-         {chatLog.map((m, i) => (
-           <div key={i} className={`message-bubble ${m.role}`}>
-              {m.content}
-           </div>
-         ))}
+         {chatLog.map((m, i) => {
+            const parts = m.content.split('Disclaimer:');
+            return (
+              <div key={i} className={`message-bubble ${m.role}`} style={isGlobal && m.role === 'user' ? { boxShadow: '0 4px 12px hsla(0,0%,0%,0.1)' } : {}}>
+                {m.audioUrl && (
+                  <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid hsla(0,0%,0%,0.1)' }}>
+                    <audio src={m.audioUrl} controls style={{ width: '100%', height: '36px', outline: 'none' }} />
+                  </div>
+                )}
+                {m.responseAudioBase64 && (
+                  <div style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid hsla(0,0%,100%,0.06)' }}>
+                    <audio src={`data:audio/mp3;base64,${m.responseAudioBase64}`} controls autoPlay style={{ width: '100%', height: '36px', outline: 'none' }} />
+                  </div>
+                )}
+                <div className="markdown-body">
+                  <ReactMarkdown>{parts[0]}</ReactMarkdown>
+                </div>
+                {parts.length > 1 && (
+                  <div style={{ 
+                    marginTop: '0.75rem', 
+                    paddingTop: '0.75rem', 
+                    borderTop: '1px solid hsla(0,0%,100%,0.06)',
+                    fontSize: '0.75rem', 
+                    color: m.role === 'user' ? 'hsla(0,0%,0%,0.6)' : 'var(--text-muted)',
+                    lineHeight: 1.4,
+                    fontStyle: 'italic'
+                  }}>
+                    <strong>Disclaimer:</strong> {parts[1]}
+                  </div>
+                )}
+              </div>
+            );
+         })}
          {isTyping && (
            <div className="message-bubble assistant" style={{ display: 'flex', gap: '4px', padding: '1rem' }}>
-              <div className="typing-dot" />
-              <div className="typing-dot" />
-              <div className="typing-dot" />
+              <div className="typing-dot pulse" />
+              <div className="typing-dot pulse" />
+              <div className="typing-dot pulse" />
            </div>
          )}
       </div>
 
-      <div className="chat-input-area">
-         <div style={{ position: 'relative' }}>
+      <div className="chat-input-area" style={isGlobal ? { padding: '1.5rem 2rem 2rem' } : {}}>
+         
+         {/* Voice Preview Area */}
+         {previewAudio && (
+           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'hsla(0,0%,100%,0.05)', borderRadius: '12px', marginBottom: '1rem' }}>
+             <audio src={previewAudio} controls style={{ flex: 1, height: '36px', outline: 'none' }} />
+             <button onClick={cancelRecording} style={{ background: 'none', border: 'none', color: 'var(--rose-alert)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>Discard</button>
+           </div>
+         )}
+         
+         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input 
               type="text" 
               className="form-input" 
-              placeholder="Type your question..." 
+              placeholder={isRecording ? "Listening..." : "Type or speak your question..."} 
               value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
-              disabled={isTyping}
-              style={{ width: '100%', paddingRight: '48px' }}
+              disabled={isTyping || isRecording}
+              style={{ flex: 1, paddingRight: '48px' }}
             />
+            {browserSupportsSpeechRecognition && !previewAudio && (
+              <button 
+                onClick={toggleRecording}
+                disabled={isTyping}
+                style={{ 
+                  position: 'absolute', right: '40px', top: '50%', transform: 'translateY(-50%)', 
+                  background: isRecording ? 'var(--rose-alert)' : 'none', 
+                  border: 'none', 
+                  color: isRecording ? 'white' : 'var(--text-muted)', 
+                  cursor: 'pointer', 
+                  padding: '4px',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.3s ease'
+                }}
+                title={isRecording ? "Stop Recording" : "Start Recording"}
+              >
+                {isRecording ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                )}
+              </button>
+            )}
             <button 
               onClick={() => handleSend()}
-              disabled={!message.trim() || isTyping}
-              style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: message.trim() ? 'var(--chetana-teal)' : 'none', border: 'none', width: '32px', height: '32px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.3s ease' }}
+              disabled={(!message.trim() && !previewAudio) || isTyping || isRecording}
+              style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: (message.trim() || previewAudio) ? 'var(--chetana-teal)' : 'none', border: 'none', width: '32px', height: '32px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.3s ease' }}
             >
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={message.trim() ? "black" : "currentColor"} strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={(message.trim() || previewAudio) ? "black" : "currentColor"} strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             </button>
          </div>
+         {isRecording && (
+           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1rem' }}>
+              <div className="extraction-pulse" style={{ width: '40px', height: '40px' }} />
+              <div style={{ fontSize: '0.7rem', color: 'var(--rose-alert)', marginTop: '0.5rem', fontWeight: 600 }}>Tap the stop button to finish recording.</div>
+           </div>
+         )}
       </div>
     </div>
   );
@@ -441,84 +580,7 @@ const ReportCard = ({ report, onRefresh, onSelect }: { report: Report; onRefresh
   );
 };
 
-const VoiceModal = ({ isOpen, onClose, familyId, memberId }: { isOpen: boolean; onClose: () => void; familyId: string; memberId: string }) => {
-  const [message, setMessage] = useState('');
-  const [chatLog, setChatLog] = useState<{ role: string; content: string }[]>([]);
-  const [sessionId, setSessionId] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
 
-  const handleSend = async () => {
-    if (!message.trim()) return;
-    const userMsg = { role: 'user', content: message };
-    setChatLog(prev => [...prev, userMsg]);
-    setMessage('');
-    setIsTyping(true);
-    try {
-      const response = await api.chat(familyId, memberId, message, sessionId);
-      setSessionId(response.sessionId);
-      setChatLog(prev => [...prev, { role: 'assistant', content: response.message || "I'm processing your request." }]);
-    } catch {
-      setChatLog(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting right now." }]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  if (!isOpen) return null;
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'hsla(220, 20%, 3%, 0.8)', backdropFilter: 'blur(20px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-      <div className="glass-card" style={{ width: '100%', maxWidth: '600px', height: '80vh', display: 'flex', flexDirection: 'column', padding: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Voice Sanctuary</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.25rem' }}>✕</button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {chatLog.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '3rem', fontSize: '0.9rem' }}>
-              Ask Nova anything about your family's health records.
-            </div>
-          )}
-          {chatLog.map((log, i) => {
-            const parts = log.content.split('Disclaimer:');
-            return (
-              <div key={i} style={{ 
-                alignSelf: log.role === 'user' ? 'flex-end' : 'flex-start', 
-                maxWidth: '85%', 
-                padding: '0.875rem 1.25rem', 
-                borderRadius: '16px', 
-                background: log.role === 'user' ? 'var(--chetana-teal)' : 'hsla(0,0%,100%,0.05)', 
-                color: log.role === 'user' ? 'hsl(220,20%,5%)' : 'inherit', 
-                fontSize: '0.9375rem', 
-                lineHeight: 1.5,
-                boxShadow: '0 4px 12px hsla(0,0%,0%,0.1)'
-              }}>
-                <div>{parts[0]}</div>
-                {parts.length > 1 && (
-                  <div style={{ 
-                    marginTop: '0.75rem', 
-                    paddingTop: '0.75rem', 
-                    borderTop: '1px solid hsla(0,0%,100%,0.06)',
-                    fontSize: '0.75rem', 
-                    color: log.role === 'user' ? 'hsla(220,20%,5%,0.6)' : 'var(--text-muted)',
-                    lineHeight: 1.4,
-                    fontStyle: 'italic'
-                  }}>
-                    <strong>Disclaimer:</strong> {parts[1]}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {isTyping && <div style={{ opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Nova is thinking…</div>}
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <input type="text" className="form-input" value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder="Ask about your health records…" style={{ flex: 1 }} />
-          <button className="btn-primary" onClick={handleSend} style={{ padding: '0 1.5rem', borderRadius: '12px' }}>Send</button>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // ─── Theme utilities ──────────────────────────────────────────────────────────
 
@@ -888,12 +950,18 @@ function App() {
         </div>
       </main>
 
-      <VoiceModal 
-        isOpen={isVoiceOpen} 
-        onClose={() => setIsVoiceOpen(false)} 
-        familyId={appSession.familyId}
-        memberId={selectedMember?.id || ''} 
-      />
+      {isVoiceOpen && appSession && selectedMember && (
+        <div className="report-modal-overlay" style={{ zIndex: 2000 }}>
+          <ChetanaAssistant 
+            familyId={appSession.familyId}
+            memberId={selectedMember.id}
+            language={chatLanguage}
+            setLanguage={setChatLanguage}
+            onClose={() => setIsVoiceOpen(false)}
+            isGlobal={true}
+          />
+        </div>
+      )}
     </div>
   );
 }

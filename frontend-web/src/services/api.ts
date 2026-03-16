@@ -214,14 +214,14 @@ export const api = {
     return true;
   },
 
-  chat: async (familyId: string, memberId: string, message: string, sessionId: string = '', reportId: string = '', language: string = 'English'): Promise<{ message: string; sessionId: string }> => {
+  chat: async (familyId: string, memberId: string, message: string, sessionId: string = '', reportId: string = '', language: string = 'English', responseFormat: 'text' | 'audio' | 'both' = 'text'): Promise<{ message: string; sessionId: string; audioBase64?: string }> => {
     const res = await fetch(`${BASE_URL}/families/${familyId}/members/${memberId}/chat`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ message, sessionId, reportId, language }),
+      body: JSON.stringify({ message, sessionId, reportId, language, responseFormat }),
     });
     if (!res.ok) throw new Error(`POST /chat failed: ${res.status}`);
     const data = await res.json();
-    return { message: data.reply, sessionId: data.sessionId };
+    return { message: data.reply, sessionId: data.sessionId, audioBase64: data.audioBase64 };
   },
 };

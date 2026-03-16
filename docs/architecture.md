@@ -164,6 +164,37 @@ python register_action_groups.py
 3. If action groups show empty results → check Lambda logs and DynamoDB data with the member's `familyId`/`memberId`
 4. If action groups never appear in trace → run `python register_action_groups.py` again
 
+---
+
+### Recent Architectural Learnings & Challenges (Bedrock Agent Integration)
+
+During the stabilization phase of the Bedrock Agent, several critical data-fetching bugs were identified and resolved. These are documented here to prevent regressions:
+
+#### 1. The `reportId` Relational Disconnect
+**Symptom**: The agent failed to read specific reports when asked via the Web Portal, but succeeded in the Bedrock testing console.
+**Root Cause**: The Web Portal API injects a `reportId` session attribute to force the agent into reading a specific report. The agent complied by calling `getReportDetail(reportId)`. However, the report extraction pipeline was sometimes failing to attach the `reportId` property onto the individual child `Observation` records in DynamoDB, resulting in the Lambda returning 0 observations for that report.
+**Resolution**:
+- **Future-proofing**: `DynamoRepository.put_report_and_observations` was updated to explicitly coerce and stamp the `reportId` onto every observation before insertion, ignoring whatever the extraction LLM outputted.
+- **Backward-compatibility**: `get_report_detail` was updated to loosely join observations. If `obs.reportId` is missing, it falls back to checking if `obs.date == report.date` to logically group them.
+
+#### 2. The "Unknown" String Hallucination
+**Symptom**: The agent would randomly fail to find common tests (like MCV or PCV) on subsequent retry attempts.
+**Root Cause**: When the LLM was unsure of a LOINC code for a test, it would populate the parameters as `{ "loincCode": "unknown", "testName": "Mean Corpuscular Volume" }`. In Python, `search_query = loinc_code or test_name` evaluated the literal string `"unknown"` as truthy. The backend subsequently searched the entire database for the word "unknown" and ignored the actual test name.
+**Resolution**: The action group Lambda now explicitly intercepts and nullifies the string `"unknown"` (case-insensitive) from any incoming agent parameters before evaluating the search logic.
+
+#### 3. Brittle Exact-Match Fallbacks
+**Symptom**: Searching for "Mean Corpuscular Volume" returned 0 results if the DB stored it as "Mean Corpuscular Volume (MCV)".
+**Root Cause**: The fallback search logic was attempting an exact substring match of the `search_query` alone.
+**Resolution**: The `getObservations` fallback mechanism was rewritten as a "wide search". If the primary exact LOINC lookup fails, the Lambda gathers every observation for that patient. It then creates a pool of search terms (the `testName`, `loincCode`, `search_query`) and checks if *any* of those terms appear as a substring inside either the saved observation's name or code. This fuzzier matching prevents the agent from dead-ending on slight syntactic differences.
+
+#### 4. Unified Voice and Text Chat Interface
+**Challenge**: The application previously had two distinct chat interfaces: `VoiceModal` (for general "Voice Sanctuary" family interactions) and `ChetanaAssistant` (for individual report-specific text chats). This caused fragmented user experiences and duplicated code. The Voice Sanctuary also lacked a way to review voice recordings before sending.
+**Resolution**: 
+- **Component Consolidation**: Merged both into a single cohesive interface (`ChetanaAssistant`) capable of handling both global family-level context and report-specific context via an `isGlobal` prop.
+- **Audio Review & Live Transcription**: Integrated `MediaRecorder` to capture audio blobs for a "listen before you send" feature, alongside `react-speech-recognition` to provide live text transcription of the user's voice. If a user is not satisfied with the recording, they can discard the standalone media or textual transcription directly within the UI.
+
+---
+
 ## Core Processing Flows
 
 ### 1. Medical Report Extraction (10-20 Seconds)

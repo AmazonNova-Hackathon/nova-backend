@@ -259,6 +259,12 @@ Resources:
               Action:
                 - bedrock:InvokeAgent
               Resource: "*"
+        - Statement:
+            - Sid: PollySynthesizeAccess
+              Effect: Allow
+              Action:
+                - polly:SynthesizeSpeech
+              Resource: "*"
       Events:
         ChatApi:
           Type: Api

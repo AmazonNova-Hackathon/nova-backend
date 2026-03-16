@@ -279,7 +279,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"message\": \"Explain my latest reports in Marathi.\",\n    \"sessionId\": \"{{sessionId}}\",\n    \"reportId\": \"{{reportId}}\",\n    \"language\": \"Marathi\"\n}",
+              "raw": "{\n    \"message\": \"Explain my latest reports in Marathi.\",\n    \"sessionId\": \"{{sessionId}}\",\n    \"reportId\": \"{{reportId}}\",\n    \"language\": \"Marathi\",\n    \"responseFormat\": \"text\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {

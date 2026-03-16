@@ -9,6 +9,7 @@ Serverless AWS backend for an Android/web app that extracts lab data using **Ama
 - **Multimodal Extraction**: Supports `PNG`, `JPEG`, `WebP`, and `PDF` (high-res mobile photos & documents).
 - **Hierarchical REST API**: Strictly organized paths: `/families/{fid}/members/{mid}/...`.
 - **Session-Aware AI Chat**: Native support for multi-turn conversations via Bedrock Agents.
+- **Voice Sanctuary**: Supports Voice Memos natively and generates dynamic `responseFormat` options (audio & text via Amazon Polly).
 - **Hyper-Local Intelligence**: Support for native languages (**Hindi, Marathi, Tamil**) with medical grounding.
 - **Health Trends**: Automated mapping of extracted values to **LOINC codes** for longitudinal tracking.
 - **Data Integrity**: Optimized for medical precision with `Decimal` serialization and `meta`-block tracking.
@@ -99,3 +100,4 @@ The collection includes scripts that automatically capture `familyId`, `memberId
 - **MIME Mismatch**: Fixed! Supported formats include `image/*` and `application/pdf`.
 - **Chat Context loss**: Fixed! Always pass the `sessionId` from the previous response.
 - **Multi-lingual AI**: Enabled! Pass the `language` parameter to the `/chat` endpoint for native interpretations.
+- **Audio Output**: To receive speech syntheses through Amazon Polly, pass `responseFormat: "audio"` to the `/chat` API!

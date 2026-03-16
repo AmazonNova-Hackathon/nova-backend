@@ -111,6 +111,10 @@ class DynamoRepository:
             for obs in observations:
                 obs_item = obs.model_dump(exclude_none=True)
                 self._add_meta(obs_item)
+                
+                # Explicitly link the observation to the report's ID regardless of what the extractor sent
+                obs_item['reportId'] = report.reportId
+                
                 obs_item['pk'] = self._get_pk(report.familyId)
                 obs_item['sk'] = f"OBS#{report.memberId}#{obs.loincCode}#{obs.date or 'UNKNOWN'}#{obs.id}"
                 batch.put_item(Item=self._serialize(obs_item))
@@ -207,7 +211,16 @@ class DynamoRepository:
             return None
             
         all_obs = self.get_observations(family_id, member_id)
-        report_obs = [obs for obs in all_obs if obs.get('reportId') == report_id]
+        
+        report_obs = []
+        report_date = report.get('date')
+        
+        for obs in all_obs:
+            # First check direct relationship, then fallback to same day
+            if obs.get('reportId') == report_id:
+                report_obs.append(obs)
+            elif not obs.get('reportId') and report_date and obs.get('date') == report_date:
+                report_obs.append(obs)
         
         return {
             "report": report,

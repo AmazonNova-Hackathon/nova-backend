@@ -105,6 +105,13 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         elif function == "getObservations":
             loinc_code = extract_param(event, "loincCode")
             test_name = extract_param(event, "testName")
+            
+            # The agent often hallucinates "unknown" -> nullify it so we use test_name
+            if loinc_code and loinc_code.lower() == "unknown":
+                loinc_code = None
+            if test_name and test_name.lower() == "unknown":
+                test_name = None
+                
             search_query = loinc_code or test_name
             from_date = extract_param(event, "fromDate")
             to_date = extract_param(event, "toDate")
